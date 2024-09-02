@@ -1,17 +1,18 @@
 """
 Author: Antonello Paolino
-Date: 2024-08-23
-Description:    ...
+Date: 2024-08-28
+Description:    Python script to generate random samples of joint configurations
+                using Latin Hypercube Sampling and optimize them removing the 
+                self-collisions. The optimized samples are saved to a csv file.
 """
 
 # Import libraries
 import numpy as np
-import scipy as sp
 import pathlib
 # Import custom classes
-from src.Robot import Robot
-from src.LatinHypercubeSampling import generate_lhs_sampling
-from src.Optimizer import Optimizer
+from src.robot import Robot
+from src.latin_hypercube_sampling import generate_lhs_sampling
+from src.optimizer import Optimizer
 
 NUMBER_OF_CONFIGURATIONS = 100
 DISPLAY_OPTIMIZED_CONFIGURATIONS = False
