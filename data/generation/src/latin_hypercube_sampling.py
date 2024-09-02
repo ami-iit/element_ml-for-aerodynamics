@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
 from scipy.stats import qmc
 
 def generate_lhs_sampling(num_samples, ranges, seed):

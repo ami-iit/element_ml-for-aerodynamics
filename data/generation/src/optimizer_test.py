@@ -1,5 +1,4 @@
 import numpy as np
-import scipy as sp
 import scipy.optimize as sp_opt
 
 class Optimizer:
@@ -121,4 +120,3 @@ class Optimizer:
         else:
             optimized = False
             return optimized, u_init
-        
