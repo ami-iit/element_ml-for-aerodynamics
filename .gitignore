@@ -32,3 +32,6 @@
 *.cas.h5
 *.prs
 *.dtbs
+
+# CSVs
+*.csv

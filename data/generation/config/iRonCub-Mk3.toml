@@ -1,0 +1,132 @@
+# iRonCub-Mk3 config file
+
+[Model]
+Base_link = "root_link"
+
+[Joints]
+List = [
+    "torso_pitch",
+    "torso_roll",
+    "torso_yaw",
+    "l_shoulder_pitch",
+    "l_shoulder_roll",
+    "l_shoulder_yaw",
+    "l_elbow",
+    "r_shoulder_pitch",
+    "r_shoulder_roll",
+    "r_shoulder_yaw",
+    "r_elbow",
+    "l_hip_pitch",
+    "l_hip_roll",
+    "l_hip_yaw",
+    "l_knee",
+    # "l_ankle_pitch",
+    # "l_ankle_roll",
+    "r_hip_pitch",
+    "r_hip_roll",
+    "r_hip_yaw",
+    "r_knee",
+    # "r_ankle_pitch",
+    # "r_ankle_roll",
+]
+Frames = [
+    "head",
+    "chest_l_jet_turbine",
+    "chest_r_jet_turbine",
+    "l_upper_arm",
+    "l_shoulder_1",
+    "l_shoulder_2",
+    "l_arm_jet_turbine",
+    "l_lower_leg",
+    "l_hip_1",
+    "l_upper_leg",
+    "l_hip_3",
+    "r_upper_arm",
+    "r_shoulder_1",
+    "r_shoulder_2",
+    "r_arm_jet_turbine",
+    "r_lower_leg",
+    "r_hip_1",
+    "r_upper_leg",
+    "r_hip_3",
+    "root_link",
+    "chest",
+    "torso_1",
+    "torso_2",
+]
+Limits = [
+    [-18.0, 45.0], [-23.0, 23.0], [-43.0, 43.0], # torso joints
+    [-175.0, 20.0], [12.0, 163.0], [-50.0, 80.0], [-3.0, 75.0], # left arm joints
+    [-175.0, 20.0], [12.0, 163.0], [-50.0, 80.0], [-3.0, 75.0], # right arm joints
+    [-45.0, 115.0], [-10.0, 112.0], [-80.0, 80.0], [-70.0, 5.0], # left leg joints [no ankles:[-45.0, 45.0], [-25.0, 25.0]]
+    [-45.0, 115.0], [-10.0, 112.0], [-80.0, 80.0], [-70.0, 5.0], # right leg joints [no ankles:[-45.0, 45.0], [-25.0, 25.0]]
+]
+WindTunnelLimits = [
+    [-15.0, 20.0], [-20.0, 20.0], [-20.0, 20.0], # torso joints
+    [-42.5, 15.0], [10.0, 40.0], [-45.0, 37.5], [0.0, 37.5], # left arm joints
+    [-42.5, 15.0], [10.0, 40.0], [-45.0, 37.5], [0.0, 37.5], # right arm joints
+    [-35.0, 42.5], [5.0, 45.0], [-32.5, 65.0], [-35.0, 5.0], # left leg joints [no ankles:[-40, 30], [-20, 20]]
+    [-35.0, 42.5], [5.0, 45.0], [-32.5, 65.0], [-35.0, 5.0] # right leg joints [no ankles:[-40, 30], [-20, 20]]
+]
+
+[Collisions]
+FramesList = [
+    "l_arm_jet_turbine",
+    "r_arm_jet_turbine",
+    "chest_l_jet_turbine",
+    "chest_r_jet_turbine",
+    "l_upper_arm",
+    "r_upper_arm",
+    "l_upper_leg",
+    "r_upper_leg",
+    "l_lower_leg",
+    "r_lower_leg",
+    "root_link",
+    "chest",
+]
+# Centers = [
+#     [0.0, 0.0, -0.06], [0.0, 0.0, -0.12], [0.0, 0.0, -0.16], [0.0, 0.0, -0.225], # left arm turbine
+#     [0.0, 0.0, -0.06], [0.0, 0.0, -0.12], [0.0, 0.0, -0.16], [0.0, 0.0, -0.225], # right arm turbine
+#     [0.0, 0.0, -0.06], [0.0, 0.0, -0.12], [0.0, 0.0, -0.16], [0.0, 0.0, -0.225], # left jetpack turbine
+#     [0.0, 0.0, -0.06], [0.0, 0.0, -0.12], [0.0, 0.0, -0.16], [0.0, 0.0, -0.225], # right jetpack turbine
+#     [-0.0, -0.0, -0.02], [-0.0, -0.0, -0.08], # left upper arm
+#     [-0.0, -0.0, -0.02], [-0.0, -0.0, -0.08], # right upper arm
+#     [0.005, 0.01, 0.05], [0.01, 0.01, -0.01], # left upper leg
+#     [0.005, -0.01, 0.05], [0.01, -0.01, -0.01], # right upper leg
+#     [-0.02, -0.02, -0.07], [-0.02, -0.02, -0.13], [-0.02, -0.02, -0.17], # left lower leg
+#     [-0.02, 0.02, -0.07], [-0.02, 0.02, -0.13], [-0.02, 0.02, -0.17], # right lower leg
+#     [0.02, 0.05, 0.01], [0.02, -0.05, 0.01], [0.02, 0.0, 0.05], [0.02, 0.0, -0.02], # base link
+#     [0.0, 0.0, 0.0], [0.0, 0.0, 0.0775], # chest
+# ]
+# Radiuses = [
+#     [0.05, 0.06, 0.06, 0.06], [0.05, 0.06, 0.06, 0.06], # arm turbines
+#     [0.05, 0.06, 0.06, 0.06], [0.05, 0.06, 0.06, 0.06], # jetpack turbines
+#     [0.05, 0.05], [0.05, 0.05], # upper arms
+#     [0.0675, 0.0675], [0.0675, 0.0675], # upper legs
+#     [0.06, 0.06, 0.06], [0.06, 0.06, 0.06], # lower legs
+#     [0.05, 0.05, 0.055, 0.03], # base link
+#     [0.08, 0.0975], # chest
+# ]
+Centers = [
+    [0.0, 0.0, -0.06], [0.0, 0.0, -0.12], [0.0, 0.0, -0.16], [0.0, 0.0, -0.225], [0.093, 0.0, -0.16], # left arm turbine
+    [0.0, 0.0, -0.06], [0.0, 0.0, -0.12], [0.0, 0.0, -0.16], [0.0, 0.0, -0.225], [-0.09, -0.023, -0.16], # right arm turbine
+    [0.0, 0.0, -0.06], [0.0, 0.0, -0.12], [0.0, 0.0, -0.16], [0.0, 0.0, -0.225], # left jetpack turbine
+    [0.0, 0.0, -0.06], [0.0, 0.0, -0.12], [0.0, 0.0, -0.16], [0.0, 0.0, -0.225], # right jetpack turbine
+    [-0.0, -0.0, -0.02], [-0.0, -0.0, -0.08], # left upper arm
+    [-0.0, -0.0, -0.02], [-0.0, -0.0, -0.08], # right upper arm
+    [0.005, 0.01, 0.05], [0.01, 0.01, -0.01], # left upper leg
+    [0.005, -0.01, 0.05], [0.01, -0.01, -0.01], # right upper leg
+    [-0.02, -0.02, -0.07], [-0.02, -0.02, -0.13], [-0.02, -0.02, -0.17], # left lower leg
+    [-0.02, 0.02, -0.07], [-0.02, 0.02, -0.13], [-0.02, 0.02, -0.17], # right lower leg
+    [0.02, 0.05, 0.01], [0.02, -0.05, 0.01], [0.02, 0.0, 0.05], [0.02, 0.0, -0.02], # base link
+    [0.0, 0.0, 0.0], [0.0, 0.0, 0.0775], # chest
+]
+Radiuses = [
+    [0.07, 0.08, 0.08, 0.08, 0.055], [0.07, 0.08, 0.08, 0.08, 0.055], # arm turbines
+    [0.05, 0.06, 0.06, 0.06], [0.05, 0.06, 0.06, 0.06], # jetpack turbines
+    [0.05, 0.05], [0.05, 0.05], # upper arms
+    [0.08, 0.075], [0.08, 0.075], # upper legs
+    [0.06, 0.06, 0.06], [0.06, 0.06, 0.06], # lower legs
+    [0.05, 0.05, 0.055, 0.03], # base link
+    [0.08, 0.0975], # chest
+]
