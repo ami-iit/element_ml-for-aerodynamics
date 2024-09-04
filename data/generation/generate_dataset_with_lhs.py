@@ -45,8 +45,8 @@ def main():
         new_joint_configurations = np.vstack((new_joint_configurations, new_joint_pos*180/np.pi))
         new_robot.set_state(pitch_angle=0, yaw_angle=0, joint_positions=new_joint_pos)
         if optimized and DISPLAY_OPTIMIZED_CONFIGURATIONS:
-            old_robot.visualize_with_collision_spheres(title=f"Config {config_index+1}: non-optimized", non_blocking=False)
-            new_robot.visualize_with_collision_spheres(title=f"Config {config_index+1}: optimized", non_blocking=False)
+            old_robot.visualize_with_collision_spheres(title=f"Config {config_index+1}: non-optimized")
+            new_robot.visualize_with_collision_spheres(title=f"Config {config_index+1}: optimized")
             new_robot.visualize_robot_comparison(old_robot, title=f"Config {config_index+1}: new (green) vs old (red)",non_blocking=False)
         print(f"config {config_index+1}/{NUMBER_OF_CONFIGURATIONS}", end='\r', flush=True)
     optimized_samples = np.hstack((samples[:,:2], new_joint_configurations))
