@@ -4,8 +4,11 @@
 # Matlab temp files
 *.asv
 
-# numpy dataset
+# Python datasets
 *.npy
+*.npz
+*.parquet
+*.h5
 
 # GIFs
 *.gif
