@@ -1,84 +1,16 @@
 """
 Author: Antonello Paolino
-Date: 2024-05-29
+Date: 2024-10-01
 Description:    This code uses the iDynTree package to retrieve the robot status,
                 then it generates a 2D representation fo the 3D pressure map on
-                the robot component surfaces
+                the robot component surfaces and saves the images in a dataset.
 """
 
 # Import libraries
 import numpy as np
-import pickle
 from pathlib import Path
 from src.robot import Robot
 from src.flow import FlowImporter
-
-def main():
-    # Initialize robot and flow objects
-    robot_name = "iRonCub-Mk3"
-    robot = Robot(robot_name)
-    # Create a dataset output directory if not existing
-    dataset_dir = Path(__file__).parents[0] / "dataset"
-    dataset_dir.mkdir(parents=True, exist_ok=True)
-    # Get the path to the raw data
-    data_dir = input("Enter the path to the fluent data directory: ")
-    data_path = Path(str(data_dir).strip())
-    file_names = [file.name for file in data_path.rglob('*.dtbs') if file.is_file()]
-    joint_configs = sorted(list(set([file_name.split("-")[0] for file_name in file_names])))
-    joint_config_file_path = list(data_path.rglob("joint-configurations.csv"))[0]
-    joint_configs = np.genfromtxt(joint_config_file_path, delimiter=",", dtype=str)
-    dataset = {}
-    for config_name in joint_configs:
-        joint_positions = joint_configs[joint_configs[:,0] == config_name][0,1:].astype(float)
-        pitch_yaw_angles = find_pitch_yaw_angles(config_name, file_names)
-        pitch_angles = []
-        yaw_angles = []
-        counter = 0
-        for pitch_angle, yaw_angle in pitch_yaw_angles:
-            pitch_angle = int(pitch_angle)  # Cast to integer
-            yaw_angle = int(yaw_angle)  # Cast to integer
-            # Set robot state and get link to world transformations
-            robot.set_state(pitch_angle, yaw_angle, joint_positions*np.pi/180)
-            link_H_world_dict = robot.compute_all_link_H_world()
-            # Initialize flow object
-            flow = FlowImporter(robot_name)
-            # Import fluent data from all surfaces
-            flow.import_raw_fluent_data(data_path, config_name, pitch_angle, yaw_angle, robot.surface_list)        
-            flow.transform_local_fluent_data(link_H_world_dict, flow_velocity=17.0, flow_density=1.225)
-            flow.assign_global_fluent_data()
-            # Data Interpolation and Image Generation 
-            resolution_scaling_factor = 1 # 1 for 1060 [px/m]
-            surface_resolution = np.array(robot.image_resolutions)
-            image_resolution_scaled = (surface_resolution * resolution_scaling_factor).astype(int) # scale to apply to the image resolution
-            flow.interpolate_flow_data(image_resolution_scaled, robot.surface_list, robot.surface_axes)
-            flow.assemble_images()
-            # Initialize database structure of dimensions (N_images, N_channels, X, Y) and store data
-            if counter == 0:
-                database = np.empty(shape=(len(pitch_yaw_angles), flow.image.shape[0], flow.image.shape[1], flow.image.shape[2]), dtype=np.float16)
-            database[counter, :, :, :] = flow.image
-            pitch_angles.append(pitch_angle)
-            yaw_angles.append(yaw_angle)
-            counter += 1
-            print(f"{joint_config_name} configuration progress: {counter}/{pitch_yaw_angles.shape[0]}", end='\r', flush=True)
-
-        # Assign dataset variables
-        dataset[joint_config_name] = {
-            "pitch_angles": np.array(pitch_angles).astype(np.float16),
-            "yaw_angles": np.array(yaw_angles).astype(np.float16),
-            "database": np.array(database).astype(np.float16)
-        }
-        # Save compressed dataset using compressed numpy
-        np.savez_compressed(str(dataset_dir / f"ironcub-{joint_config_name}.npz"), 
-            pitch_angles=pitch_angles, 
-            yaw_angles=yaw_angles, 
-            data=database)
-        print(f"Dataset for {joint_config_name} configuration saved.")
-
-    # Save complete dataset
-    with open(str(dataset_dir / "ironcub-complete.npy"), "wb") as f:
-        pickle.dump(dataset, f, protocol=4)
-    print("Complete dataset saved.")
-
 
 def find_pitch_yaw_angles(joint_config_name, file_names):
     segmented_files = [file_name.split("-") for file_name in file_names if file_name.split("-")[0] == joint_config_name]
@@ -99,6 +31,60 @@ def find_pitch_yaw_angles(joint_config_name, file_names):
     # Remove duplicates
     pitch_yaw_angles = np.unique(pitch_yaw_angles, axis=0)
     return pitch_yaw_angles
+
+def main():
+    # Initialize robot
+    robot = Robot("iRonCub-Mk3")
+    # Create a dataset output directory if not existing
+    dataset_dir = Path(__file__).parents[0] / "dataset"
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+    # Get the path to the raw data
+    data_dir = input("Enter the path to the fluent data directory: ")
+    data_path = Path(str(data_dir).strip())
+    file_names = [file.name for file in data_path.rglob('*.dtbs') if file.is_file()]
+    config_names = sorted(list(set([file_name.split("-")[0] for file_name in file_names])))
+    joint_config_file_path = list(data_path.rglob("joint-configurations.csv"))[0]
+    joint_configs = np.genfromtxt(joint_config_file_path, delimiter=",", dtype=str)
+    dataset = {}
+    for config_name in config_names:
+        joint_pos = joint_configs[joint_configs[:,0] == config_name][0,1:].astype(float)
+        pitch_yaw_angles = find_pitch_yaw_angles(config_name, file_names)
+        pitch_angles = []
+        yaw_angles = []
+        counter = 0
+        for pitch_angle, yaw_angle in pitch_yaw_angles:
+            pitch_angle = int(pitch_angle)  # Cast to integer
+            yaw_angle = int(yaw_angle)  # Cast to integer
+            # Set robot state and get link to world transformations
+            robot.set_state(pitch_angle, yaw_angle, joint_pos*np.pi/180)
+            link_H_world_dict = robot.compute_all_link_H_world()
+            # Initialize flow object
+            flow = FlowImporter()
+            # Import fluent data from all surfaces
+            flow.import_raw_fluent_data(data_path, config_name, pitch_angle, yaw_angle, robot.surface_list)        
+            flow.transform_local_fluent_data(link_H_world_dict, flow_velocity=17.0, flow_density=1.225)
+            flow.assign_global_fluent_data()
+            # Data Interpolation and Image Generation
+            flow.interpolate_flow_data(robot.image_resolutions, robot.surface_list, robot.surface_axes)
+            flow.assemble_images()
+            # Initialize database structure of dimensions (N_images, N_channels, X, Y) and store data
+            if counter == 0:
+                database = np.empty(shape=(len(pitch_yaw_angles), flow.image.shape[0], flow.image.shape[1], flow.image.shape[2]), dtype=np.float16)
+            database[counter, :, :, :] = flow.image
+            pitch_angles.append(pitch_angle)
+            yaw_angles.append(yaw_angle)
+            counter += 1
+            print(f"{config_name} configuration progress: {counter}/{pitch_yaw_angles.shape[0]}", end='\r', flush=True)
+        # Assign dataset variables
+        dataset[config_name] = {
+            "pitch_angles": np.array(pitch_angles).astype(np.float16),
+            "yaw_angles": np.array(yaw_angles).astype(np.float16),
+            "database": np.array(database).astype(np.float16)
+        }
+        # Save compressed dataset using compressed numpy
+        np.savez_compressed(str(dataset_dir / f"ironcub-{config_name}.npz"),data=dataset[config_name])
+        print(f"Dataset for {config_name} configuration saved.")
+
 
 if __name__ == "__main__":
     main()

@@ -28,7 +28,7 @@ class SurfaceData:
     image: np.ndarray = field(default_factory=lambda: np.empty(shape=(4,0,0)))
     
 class FlowImporter:
-    def __init__(self, robot_name):
+    def __init__(self):
         self.surface = {}
         self.x = np.empty(shape=(0,))
         self.y = np.empty(shape=(0,))
