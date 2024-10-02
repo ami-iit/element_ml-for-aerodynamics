@@ -18,9 +18,8 @@ SAVE_IMAGES = True
 
 def main():
     # Initialize robot and flow objects
-    robot_name = "iRonCub-Mk3"
-    robot = Robot(robot_name)
-    flow = FlowImporter(robot_name)
+    robot = Robot("iRonCub-Mk3")
+    flow = FlowImporter()
     
     # Get the path to the dataset
     data_dir = input("Enter the path to the fluent data directory: ")
