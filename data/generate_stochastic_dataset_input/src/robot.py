@@ -83,6 +83,8 @@ class Robot:
         for sphere_id, center in enumerate(coll_centers):
             sphere = o3d.geometry.TriangleMesh.create_sphere(radius=coll_radiuses[sphere_id])
             sphere.translate(center)
+            sphere.compute_vertex_normals()
+            sphere.compute_triangle_normals()
             sphere_material = o3d.visualization.rendering.MaterialRecord()
             sphere_material.shader = "defaultLitTransparency"
             sphere_material.base_color = [1.0, 0.0, 0.0, 0.6]  # RGBA, A is for alpha
