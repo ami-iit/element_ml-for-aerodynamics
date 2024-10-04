@@ -54,14 +54,14 @@ class Optimizer:
         grad_c_collision = np.empty((0,))
         for i, frame_i in enumerate(self.robot.collisions_frame_list):
             J_i = self.robot.get_free_free_floating_jacobian(frame_i)
-            w_H_i = self.robot.kinDyn.getWorldTransform(frame_i).asHomogeneousTransform().toNumPy()
+            w_H_i = self.robot.kindyn.getWorldTransform(frame_i).asHomogeneousTransform().toNumPy()
             b_centers_i = self.robot.collisions[frame_i]["Centers"]
             centers_i = self.compute_self_collision_centers(w_H_i, b_centers_i)
             radiuses_i = self.robot.collisions[frame_i]["Radiuses"]
             for j, frame_j in enumerate(self.robot.collisions_frame_list):
                 if i > j and not ( (i == 12 and j == 3) or (i == 12 and j == 4) ):
                     J_j = self.robot.get_free_free_floating_jacobian(frame_j)
-                    w_H_j = self.robot.kinDyn.getWorldTransform(frame_j).asHomogeneousTransform().toNumPy()
+                    w_H_j = self.robot.kindyn.getWorldTransform(frame_j).asHomogeneousTransform().toNumPy()
                     b_centers_j = self.robot.collisions[frame_j]["Centers"]
                     centers_j = self.compute_self_collision_centers(w_H_j, b_centers_j)
                     radiuses_j = self.robot.collisions[frame_j]["Radiuses"]
