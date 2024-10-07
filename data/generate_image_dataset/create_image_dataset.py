@@ -6,35 +6,17 @@ Description:    This code uses the iDynTree package to retrieve the robot status
                 the robot component surfaces and saves the images in a dataset.
 """
 
-# Import libraries
 import numpy as np
 from pathlib import Path
+from resolve_robotics_uri_py import resolve_robotics_uri
 from src.robot import Robot
 from src.flow import FlowImporter
 
-def find_pitch_yaw_angles(joint_config_name, file_names):
-    segmented_files = [file_name.split("-") for file_name in file_names if file_name.split("-")[0] == joint_config_name]
-    pitch_yaw_angles = np.empty((0,2))
-    for file_name in segmented_files:
-        index = 1
-        if file_name[index] != "":
-            pitch_angle = int(file_name[index])
-            index += 1
-        else:
-            pitch_angle = -int(file_name[index+1])
-            index += 2
-        if file_name[index] != "":
-            yaw_angle = int(file_name[index])
-        else:
-            yaw_angle = -int(file_name[index+1])
-        pitch_yaw_angles = np.vstack((pitch_yaw_angles, [pitch_angle, yaw_angle]))
-    # Remove duplicates
-    pitch_yaw_angles = np.unique(pitch_yaw_angles, axis=0)
-    return pitch_yaw_angles
-
 def main():
-    # Initialize robot
-    robot = Robot("iRonCub-Mk3")
+    # Initialize robot object
+    robot_name = "iRonCub-Mk3"
+    urdf_path = str(resolve_robotics_uri("package://iRonCub-Mk3/model.urdf"))
+    robot = Robot(robot_name, urdf_path)
     # Create a dataset output directory if not existing
     dataset_dir = Path(__file__).parents[0] / "dataset"
     dataset_dir.mkdir(parents=True, exist_ok=True)
@@ -61,7 +43,7 @@ def main():
             # Initialize flow object
             flow = FlowImporter()
             # Import fluent data from all surfaces
-            flow.import_raw_fluent_data(data_path, config_name, pitch_angle, yaw_angle, robot.surface_list)        
+            flow.import_raw_fluent_data(data_path, config_name, pitch_angle, yaw_angle, robot.surface_list)
             flow.transform_local_fluent_data(link_H_world_dict, flow_velocity=17.0, flow_density=1.225)
             flow.assign_global_fluent_data()
             # Data Interpolation and Image Generation
@@ -84,6 +66,26 @@ def main():
         # Save compressed dataset using compressed numpy
         np.savez_compressed(str(dataset_dir / f"ironcub-{config_name}.npz"),data=dataset[config_name])
         print(f"Dataset for {config_name} configuration saved.")
+
+
+def find_pitch_yaw_angles(joint_config_name, file_names):
+    segmented_files = [file_name.split("-") for file_name in file_names if file_name.split("-")[0] == joint_config_name]
+    pitch_yaw_angles = np.empty((0,2))
+    for file_name in segmented_files:
+        index = 1
+        if file_name[index] != "":
+            pitch_angle = int(file_name[index])
+            index += 1
+        else:
+            pitch_angle = -int(file_name[index+1])
+            index += 2
+        if file_name[index] != "":
+            yaw_angle = int(file_name[index])
+        else:
+            yaw_angle = -int(file_name[index+1])
+        pitch_yaw_angles = np.vstack((pitch_yaw_angles, [pitch_angle, yaw_angle]))
+    pitch_yaw_angles = np.unique(pitch_yaw_angles, axis=0)
+    return pitch_yaw_angles
 
 
 if __name__ == "__main__":
