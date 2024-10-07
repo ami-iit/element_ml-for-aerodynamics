@@ -1,25 +1,20 @@
-from idyntree import bindings as idyntree
-import os
-from pathlib import Path
-import open3d as o3d
 import numpy as np
+from idyntree import bindings as idyntree
+from pathlib import Path
 from scipy.spatial.transform import Rotation as R
+import open3d as o3d
 import toml
 
 class Robot:
-    def __init__(self, robot_name):
+    def __init__(self, robot_name: str, urdf_path: str):
         self.name = robot_name
-        self._set_model_paths()
+        self.urdf_path = urdf_path
+        config_path = Path(__file__).parents[1] / "config" / f"{self.name}.toml"
+        self.config = toml.load(config_path)
         self._load_configuration()
-        self.kinDyn = self._load_kinDyn()
-        
-    def _set_model_paths(self):
-        self.config_path = Path(__file__).parents[1] / "config" / f"{self.name}.toml"
-        component_path = Path(os.getenv("IRONCUB_COMPONENT_SOURCE_DIR"))
-        self.model_path = component_path / "models" / f"{self.name}" / "iRonCub" / "robots" / f"{self.name}" / "model_stl.urdf"
+        self.kindyn = self._load_kindyn()
         
     def _load_configuration(self):
-        self.config = toml.load(self.config_path)
         self.joint_list = self.config["Joints"]["List"]
         self.base_link = self.config["Model"]["Base_link"]
         self.surface_list = self.config["Surfaces"]["List"]
@@ -28,17 +23,17 @@ class Robot:
         self.rotation_angles = self.config["Surfaces"]["Rot"]
         self.image_resolutions = np.array(self.config["Surfaces"]["Resolutions"])
     
-    def _load_kinDyn(self):
-        print(f"[loadReducedModel]: loading the following model: {self.model_path}")
+    def _load_kindyn(self):
+        print(f"[loadReducedModel]: loading the following model: {self.urdf_path}")
         model_loader = idyntree.ModelLoader()
         reduced_model = model_loader.model()
-        model_loader.loadReducedModelFromFile(str(self.model_path), self.joint_list)
+        model_loader.loadReducedModelFromFile(str(self.urdf_path), self.joint_list)
         self.nDOF = reduced_model.getNrOfDOFs()
-        kinDyn = idyntree.KinDynComputations()
-        kinDyn.loadRobotModel(reduced_model)
-        kinDyn.setFloatingBase(self.base_link)
-        print(f'[loadReducedModel]: loaded model: {self.model_path}, number of joints: {self.nDOF}')
-        return kinDyn
+        kindyn = idyntree.KinDynComputations()
+        kindyn.loadRobotModel(reduced_model)
+        kindyn.setFloatingBase(self.base_link)
+        print(f'[loadReducedModel]: loaded model: {self.urdf_path}, number of joints: {self.nDOF}')
+        return kindyn
     
     def set_state(self, pitch_angle, yaw_angle, joint_positions):
         # Compute base pose
@@ -52,10 +47,10 @@ class Robot:
         base_velocity  = np.zeros(6)
         gravity_acceleration  = np.array([0,0,9.81])
         # Set robot state
-        ack1 = self.kinDyn.setRobotState(base_pose, joint_positions, base_velocity, joint_velocities, gravity_acceleration)
+        ack1 = self.kindyn.setRobotState(base_pose, joint_positions, base_velocity, joint_velocities, gravity_acceleration)
         # Check if the robot state is set correctly #2
         joint_positions_iDynTree = idyntree.VectorDynSize(len(joint_positions))
-        self.kinDyn.getJointPos(joint_positions_iDynTree)
+        self.kindyn.getJointPos(joint_positions_iDynTree)
         val = np.linalg.norm(joint_positions - joint_positions_iDynTree.toNumPy())
         ack2 = val < 1e-6
         if not ack1 and not ack2:
@@ -64,21 +59,21 @@ class Robot:
     
     def visualize(self):
         viz = idyntree.Visualizer()
-        if viz.addModel(self.kinDyn.model(), self.name):
+        if viz.addModel(self.kindyn.model(), self.name):
             print("[initializeVisualizer]: model loaded in the visualizer.")
         else:
             print("[initializeVisualizer]: unable to load the model in the visualizer.")
         viz.camera().animator().enableMouseControl(True)
-        base_pose = self.kinDyn.getWorldBaseTransform().asHomogeneousTransform().toNumPy()
+        base_pose = self.kindyn.getWorldBaseTransform().asHomogeneousTransform().toNumPy()
         joint_positions = idyntree.VectorDynSize(self.nDOF)
-        self.kinDyn.getJointPos(joint_positions)
+        self.kindyn.getJointPos(joint_positions)
         viz.modelViz(self.name).setPositions(base_pose, joint_positions)
         while viz.run():
             viz.draw()
         return
     
     def compute_world_H_link(self, frame_name):
-        world_H_link = self.kinDyn.getWorldTransform(frame_name).asHomogeneousTransform().toNumPy()
+        world_H_link = self.kindyn.getWorldTransform(frame_name).asHomogeneousTransform().toNumPy()
         return world_H_link
     
     def compute_all_world_H_link(self):
@@ -116,7 +111,7 @@ class Robot:
 
     def load_mesh(self):
         meshes = []
-        model = self.kinDyn.getRobotModel()
+        model = self.kindyn.getRobotModel()
         visuals = model.visualSolidShapes().getLinkSolidShapes()
         for link_id in range(model.getNrOfLinks()):
             link_name = model.getLinkName(link_id)

@@ -2,7 +2,6 @@ from idyntree import bindings as idyntree
 import pathlib
 import open3d as o3d
 import numpy as np
-from scipy.spatial.transform import Rotation as R
 import toml
 
 class Robot:
@@ -56,17 +55,8 @@ class Robot:
             zero_gravity_acceleration
         )
         return
-
-    def invert_homogeneous_transform(self, a_H_b):
-        a_R_b = a_H_b[0:3,0:3]
-        a_d_b = a_H_b[0:3,-1]
-        b_H_a = np.block([
-            [a_R_b.T, np.dot(-a_R_b.T, a_d_b).reshape((3, 1))],
-            [np.zeros((1, 3)), np.ones((1, 1))]
-        ])
-        return b_H_a
     
-    def get_free_free_floating_jacobian(self, frame_name):
+    def get_free_floating_jacobian(self, frame_name):
         jac = idyntree.MatrixDynSize(6, self.nDOF+6)
         self.kindyn.getFrameFreeFloatingJacobian(frame_name, jac)
         return jac.toNumPy()
