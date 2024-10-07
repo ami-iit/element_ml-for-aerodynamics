@@ -1,0 +1,16 @@
+name: ml-env
+channels:
+  - conda-forge
+  - robotology
+dependencies:
+  - python==3.11.0
+  - pathlib
+  - toml
+  - numpy==1.26.4
+  - scipy
+  - idyntree
+  - resolve-robotics-uri-py
+  - matplotlib
+  - pip
+  - pip:
+    - open3d
