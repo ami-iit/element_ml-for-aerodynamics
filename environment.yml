@@ -11,6 +11,13 @@ dependencies:
   - idyntree
   - resolve-robotics-uri-py
   - matplotlib
+  - nvidia/label/cuda-12.4.0::cuda
+  - nomkl
   - pip
   - pip:
+    - --extra-index-url https://download.pytorch.org/whl/cu124
+    - torch
+    - torchvision
+    - torchaudio
     - open3d
+    - wandb
