@@ -16,6 +16,7 @@ dependencies:
   - tabulate
   - openpyxl
   - huggingface_hub
+  - optuna
   - pip
   - pip:
     - --extra-index-url https://download.pytorch.org/whl/cu124
@@ -23,5 +24,7 @@ dependencies:
     - torchvision
     - torchaudio
     - torchsummary
+    - torchinfo
     - open3d
     - wandb
+    - plotly
