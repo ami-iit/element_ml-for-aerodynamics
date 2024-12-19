@@ -418,13 +418,16 @@ class FlowGenerator:
         return
 
     def compute_forces(self, air_density, flow_velocity):
+        dyn_pressure = 0.5 * air_density * flow_velocity**2
         for surface in self.surface.values():
-            pressure_values = (
-                surface.pressure_coefficient * 0.5 * air_density * flow_velocity**2
-            )
-            d_force_x = pressure_values * surface.x_area
-            d_force_y = pressure_values * surface.y_area
-            d_force_z = pressure_values * surface.z_area
+            pressure = surface.pressure_coefficient * dyn_pressure
+            shear_x = surface.x_friction_coefficient * dyn_pressure
+            shear_y = surface.y_friction_coefficient * dyn_pressure
+            shear_z = surface.z_friction_coefficient * dyn_pressure
+            areas = np.sqrt(surface.x_area**2 + surface.y_area**2 + surface.z_area**2)
+            d_force_x = pressure * surface.x_area + shear_x * areas
+            d_force_y = pressure * surface.y_area + shear_y * areas
+            d_force_z = pressure * surface.z_area + shear_z * areas
             surface.global_force = np.array(
                 [
                     np.sum(d_force_x),
