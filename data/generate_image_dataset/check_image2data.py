@@ -109,6 +109,12 @@ def main():
 
     flow.compute_forces(air_density=1.225, flow_velocity=17.0)
 
+    aerodynamic_force = 0
+    for surface in flow.surface.values():
+        aerodynamic_force += surface.global_force
+
+    print(f"Total aerodynamic force: {aerodynamic_force}")
+
     ##############################################################################################
     ################################# Plots and 3D visualization #################################
     ##############################################################################################

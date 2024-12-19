@@ -518,6 +518,45 @@ class FlowVisualizer:
                 }
             )
             print(f"Mesh {mesh['name']} added to the scene.")
+        for surface_name in self.flow_properties.surface.keys():
+            surface = self.flow_properties.surface[surface_name]
+            force = surface.global_force
+            force_norm = np.linalg.norm(force)
+            # Create the force vector
+            arrow = o3d.geometry.TriangleMesh.create_arrow(
+                cylinder_radius=0.01,
+                cone_radius=0.02,
+                cylinder_height=0.1 * force_norm,
+                cone_height=0.02 * force_norm,
+            )
+            arrow.paint_uniform_color([0.0, 0.0, 1.0])
+            # Move arrow to the center of the surface
+            arr_center = (
+                np.mean(surface.x_global),
+                np.mean(surface.y_global),
+                np.mean(surface.z_global),
+            )
+            arrow.translate(arr_center)
+            # Rotate the arrow to the direction of the force
+            force_versor = force / force_norm
+            z_axis = np.array([0, 0, 1])  # Default arrow direction
+            rotation_axis = np.cross(z_axis, force_versor)
+            rotation_angle = np.arccos(np.dot(z_axis, force_versor))
+            # Create a rotation matrix
+            if np.linalg.norm(rotation_axis) > 1e-6:  # Avoid divide-by-zero
+                rotation_axis = rotation_axis / np.linalg.norm(
+                    rotation_axis
+                )  # Normalize
+                rotation_matrix = o3d.geometry.get_rotation_matrix_from_axis_angle(
+                    rotation_axis * rotation_angle
+                )
+            else:
+                rotation_matrix = np.eye(3)  # No rotation needed
+            arrow.rotate(
+                rotation_matrix, center=arr_center
+            )  # Rotate around the arrow's origin
+            # Add the arrow to the geometries list
+            geometries.append({"name": f"{surface_name}-force", "geometry": arrow})
         o3d.visualization.draw(geometries, show_skybox=False)
         return
 
