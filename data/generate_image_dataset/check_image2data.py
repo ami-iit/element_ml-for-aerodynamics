@@ -13,75 +13,22 @@ from pathlib import Path
 from resolve_robotics_uri_py import resolve_robotics_uri
 from src.robot import Robot
 from src.flow import FlowGenerator, FlowVisualizer
+import time
 
 
 def main():
-    # Initialize robot object
+    # Initialize robot and flow objects
     robot_name = "iRonCub-Mk3"
     urdf_path = str(resolve_robotics_uri("package://iRonCub-Mk3/model.urdf"))
     robot = Robot(robot_name, urdf_path)
-
-    # Initialize flow object
-    flow = FlowGenerator()
+    flow = FlowGenerator(robot.surface_list, robot.image_resolutions)
 
     # Get the path to the dataset
-    data_dir = input("Enter the path to the fluent data directory: ")
-    fluent_data_path = Path(str(data_dir).strip())
+    data_dir = input("Enter the path to the fluent mesh directory: ")
+    fluent_mesh_path = Path(str(data_dir).strip())
 
-    # Define robot state parameters
-    pitch_angle = 30
-    yaw_angle = 0
-    joint_positions = (
-        np.array(
-            [
-                0,
-                0,
-                0,
-                -30.7,
-                12.9,
-                26.5,
-                58.3,
-                -30.7,
-                12.9,
-                26.5,
-                58.3,
-                0,
-                10,
-                0,
-                0,
-                0,
-                10,
-                0,
-                0,
-            ]
-        )
-        * np.pi
-        / 180
-    )
-
-    # Set robot state
-    robot.set_state(pitch_angle, yaw_angle, joint_positions)
-
-    ###############################################################################################################
-    ####################### HERE THERE SHOULD BE THE ALGORITHM TO GENERATE THE LOCAL IMAGES #######################
-    ###############################################################################################################
-    # Load image data
-    joint_config_name_loading = "flight30"
-    pitch_angle_loading = 30
-    yaw_angle_loading = 0
-    project_directory = Path(__file__).parents[0]
-    image_directory = project_directory / "images"
-    predicted_image = np.load(
-        image_directory
-        / f"{joint_config_name_loading}-{pitch_angle_loading}-{yaw_angle_loading}.npy"
-    )
-    ###############################################################################################################
-    ###############################################################################################################
-
-    # Separate the image into the 2D images of the surfaces
-    flow.separate_images(predicted_image, robot.surface_list)
-
-    # Mesh_robot for importing the pointcloud mesh
+    ## Load mesh points
+    start_time = time.time()
     robot_ref = Robot(robot_name, urdf_path)
     pitch_angle_mesh = 0
     yaw_angle_mesh = 0
@@ -91,29 +38,98 @@ def main():
         * np.pi
         / 180
     )
-
     robot_ref.set_state(pitch_angle_mesh, yaw_angle_mesh, joint_pos_mesh)
-    world_H_link_dict = robot.compute_all_world_H_link()
     link_H_world_ref_dict = robot_ref.compute_all_link_H_world()
+    flow.load_mesh_points(fluent_mesh_path, robot.surface_list, link_H_world_ref_dict)
+    end_time = time.time()
+    print(f"Time to load mesh points: {end_time - start_time}")
 
-    flow.interpolate_flow_data_from_image(
-        fluent_data_path,
-        robot.surface_list,
-        robot.surface_axes,
-        link_H_world_ref_dict,
-        world_H_link_dict,
-        joint_config_mesh,
-        pitch_angle_mesh,
-        yaw_angle_mesh,
-    )
+    # Compute local interpolation maps
+    start_time = time.time()
+    flow.compute_interpolator(robot.surface_list, robot.surface_axes)
+    end_time = time.time()
+    print(f"Time to compute interpolator: {end_time - start_time}")
 
-    flow.compute_forces(air_density=1.225, flow_velocity=17.0)
+    # RUNTIME PROCEDURE
+    print("##### STARTING RUNTIME PROCEDURE #####")
 
-    aerodynamic_force = 0
-    for surface in flow.surface.values():
-        aerodynamic_force += surface.global_force
+    iter_time = time.time()
+    for i in range(20):
+        # Set robot state
+        start_time = time.time()
+        pitch_angle = 30
+        yaw_angle = 0
+        joint_positions = (
+            np.array(
+                [
+                    0,
+                    0,
+                    0,
+                    -30.7,
+                    12.9,
+                    26.5,
+                    58.3,
+                    -30.7,
+                    12.9,
+                    26.5,
+                    58.3,
+                    0,
+                    10,
+                    0,
+                    0,
+                    0,
+                    10,
+                    0,
+                    0,
+                ]
+            )
+            * np.pi
+            / 180
+        )
+        robot.set_state(pitch_angle, yaw_angle, joint_positions)
+        end_time = time.time()
+        print(f"Time to set robot state: {end_time - start_time}")
 
-    print(f"Total aerodynamic force: {aerodynamic_force}")
+        start_time = time.time()
+        world_H_link_dict = robot.compute_all_world_H_link()
+        flow.transform_mesh_points(robot.surface_list, world_H_link_dict)
+        end_time = time.time()
+        print(f"Time to transform mesh points: {end_time - start_time}")
+
+        # Load image data and separate single images
+        start_time = time.time()
+        joint_config_name_loading = "flight30"
+        pitch_angle_loading = 30
+        yaw_angle_loading = 0
+        project_directory = Path(__file__).parents[0]
+        image_directory = project_directory / "images"
+        predicted_image = np.load(
+            image_directory
+            / f"{joint_config_name_loading}-{pitch_angle_loading}-{yaw_angle_loading}.npy"
+        )
+        flow.separate_images(predicted_image, robot.surface_list)
+        end_time = time.time()
+        print(f"Time to load and separate images: {end_time - start_time}")
+
+        # Interpolate flow data
+        start_time = time.time()
+        flow.interpolate_flow_data(robot.surface_list)
+        end_time = time.time()
+        print(f"Time to interpolate flow data: {end_time - start_time}")
+
+        # Compute aerodynamic forces
+        start_time = time.time()
+        flow.compute_forces(air_density=1.225, flow_velocity=17.0)
+        end_time = time.time()
+        print(f"Time to compute aerodynamic forces: {end_time - start_time}")
+
+        aerodynamic_force = 0
+        for surface in flow.surface.values():
+            aerodynamic_force += surface.global_force
+        print(f"Total aerodynamic force: {aerodynamic_force}")
+
+        print(f"Time for iteration {i}: {time.time() - iter_time}")
+        iter_time = time.time()
 
     ##############################################################################################
     ################################# Plots and 3D visualization #################################

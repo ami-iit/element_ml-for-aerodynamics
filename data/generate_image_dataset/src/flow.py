@@ -2,7 +2,7 @@ import numpy as np
 import open3d as o3d
 from matplotlib.pyplot import Normalize
 from matplotlib import cm
-from scipy.interpolate import griddata
+from scipy.interpolate import griddata, RegularGridInterpolator
 from scipy.spatial.transform import Rotation as R
 from dataclasses import dataclass, field
 
@@ -35,9 +35,12 @@ class SurfaceData:
         default_factory=lambda: np.empty(shape=(0,))
     )
     image: np.ndarray = field(default_factory=lambda: np.empty(shape=(4, 0, 0)))
-    x_area: np.ndarray = field(default_factory=lambda: np.empty(shape=(0,)))
-    y_area: np.ndarray = field(default_factory=lambda: np.empty(shape=(0,)))
-    z_area: np.ndarray = field(default_factory=lambda: np.empty(shape=(0,)))
+    x_area_global: np.ndarray = field(default_factory=lambda: np.empty(shape=(0,)))
+    y_area_global: np.ndarray = field(default_factory=lambda: np.empty(shape=(0,)))
+    z_area_global: np.ndarray = field(default_factory=lambda: np.empty(shape=(0,)))
+    x_area_local: np.ndarray = field(default_factory=lambda: np.empty(shape=(0,)))
+    y_area_local: np.ndarray = field(default_factory=lambda: np.empty(shape=(0,)))
+    z_area_local: np.ndarray = field(default_factory=lambda: np.empty(shape=(0,)))
     global_force: np.ndarray = field(default_factory=lambda: np.empty(shape=(0,)))
 
 
@@ -199,8 +202,7 @@ class FlowImporter:
 
 
 class FlowGenerator:
-    def __init__(self) -> None:
-        self.surface = {}
+    def __init__(self, surface_list, image_resolution_list) -> None:
         self.x = np.empty(shape=(0,))
         self.y = np.empty(shape=(0,))
         self.z = np.empty(shape=(0,))
@@ -208,14 +210,60 @@ class FlowGenerator:
         self.fx = np.empty(shape=(0,))
         self.fy = np.empty(shape=(0,))
         self.fz = np.empty(shape=(0,))
-        self.image = np.empty(shape=(0, 0))
+        self.surface = {}
+        for surf_idx, surf_name in enumerate(surface_list):
+            self.surface[surf_name] = SurfaceData()
+            img_res = (image_resolution_list[surf_idx]).astype(int)
+            self.surface[surf_name].image = np.zeros(shape=(4, img_res[0], img_res[1]))
+        return
 
     def separate_images(self, image, surface_list):
         for surface_index, surface_name in enumerate(surface_list):
-            self.surface[surface_name] = SurfaceData()
             self.surface[surface_name].image = image[
                 4 * surface_index : 4 * (surface_index + 1), :, :
             ]
+        return
+
+    def load_mesh_points(
+        self,
+        fluent_data_path,
+        surface_list,
+        link_H_world_ref_dict,
+        reference_joint_config_name="hovering",
+        reference_pitch_angle=0,
+        reference_yaw_angle=0,
+    ):
+        for surface_name in surface_list:
+            database_file_path = list(
+                fluent_data_path.rglob(
+                    f"mesh-{reference_joint_config_name}-{reference_pitch_angle}-{reference_yaw_angle}-{surface_name}.dtbs"
+                )
+            )[0]
+            data = np.loadtxt(database_file_path, skiprows=1)
+            x_global = data[:, 1]
+            y_global = data[:, 2]
+            z_global = data[:, 3]
+            x_area_global = data[:, 4]
+            y_area_global = data[:, 5]
+            z_area_global = data[:, 6]
+            # transform the data from world to reference link frame
+            (
+                self.surface[surface_name].x_local,
+                self.surface[surface_name].y_local,
+                self.surface[surface_name].z_local,
+            ) = self.transform_points(
+                link_H_world_ref_dict[surface_name], x_global, y_global, z_global
+            )
+            (
+                self.surface[surface_name].x_area_local,
+                self.surface[surface_name].y_area_local,
+                self.surface[surface_name].z_area_local,
+            ) = self.rotate_vectors(
+                link_H_world_ref_dict[surface_name],
+                x_area_global,
+                y_area_global,
+                z_area_global,
+            )
         return
 
     def transform_points(self, frame_1_H_frame_2, x, y, z):
@@ -237,44 +285,15 @@ class FlowGenerator:
             ending_components[:, 2],
         )
 
-    def get_surface_mesh_points(
+    def transform_mesh_points(
         self,
-        fluent_data_path,
         surface_list,
-        link_H_world_ref_dict,
         world_H_link_dict,
-        reference_joint_config_name="flight30",
-        reference_pitch_angle=30,
-        reference_yaw_angle=0,
     ):
+        self.x = np.empty(shape=(0,))
+        self.y = np.empty(shape=(0,))
+        self.z = np.empty(shape=(0,))
         for surface_name in surface_list:
-            database_file_path = list(
-                fluent_data_path.rglob(
-                    f"mesh-{reference_joint_config_name}-{reference_pitch_angle}-{reference_yaw_angle}-{surface_name}.dtbs"
-                )
-            )[0]
-            data = np.loadtxt(database_file_path, skiprows=1)
-            x_global = data[:, 1]
-            y_global = data[:, 2]
-            z_global = data[:, 3]
-            x_area = data[:, 4]
-            y_area = data[:, 5]
-            z_area = data[:, 6]
-            # transform the data from world to reference link frame
-            (
-                self.surface[surface_name].x_local,
-                self.surface[surface_name].y_local,
-                self.surface[surface_name].z_local,
-            ) = self.transform_points(
-                link_H_world_ref_dict[surface_name], x_global, y_global, z_global
-            )
-            (
-                self.surface[surface_name].x_area,
-                self.surface[surface_name].y_area,
-                self.surface[surface_name].z_area,
-            ) = self.rotate_vectors(
-                link_H_world_ref_dict[surface_name], x_area, y_area, z_area
-            )
             # compute the transformation from the link frame to the current world frame
             (
                 self.surface[surface_name].x_global,
@@ -287,14 +306,14 @@ class FlowGenerator:
                 self.surface[surface_name].z_local,
             )
             (
-                self.surface[surface_name].x_area,
-                self.surface[surface_name].y_area,
-                self.surface[surface_name].z_area,
+                self.surface[surface_name].x_area_global,
+                self.surface[surface_name].y_area_global,
+                self.surface[surface_name].z_area_global,
             ) = self.rotate_vectors(
                 world_H_link_dict[surface_name],
-                self.surface[surface_name].x_area,
-                self.surface[surface_name].y_area,
-                self.surface[surface_name].z_area,
+                self.surface[surface_name].x_area_local,
+                self.surface[surface_name].y_area_local,
+                self.surface[surface_name].z_area_local,
             )
             # assign global coordinates
             self.x = np.append(self.x, self.surface[surface_name].x_global)
@@ -302,40 +321,11 @@ class FlowGenerator:
             self.z = np.append(self.z, self.surface[surface_name].z_global)
         return
 
-    def interpolate_2D_flow_variable(self, flow_variable, theta, z, points):
-        interp_flow_variable = np.zeros_like(theta) * np.nan
-        interp_flow_variable = griddata(
-            points, flow_variable, (theta, z), method="linear"
-        )
-        outside_indices = np.isnan(interp_flow_variable)
-        interp_flow_variable[outside_indices] = griddata(
-            points,
-            flow_variable,
-            (theta[outside_indices], z[outside_indices]),
-            method="nearest",
-        )
-        return interp_flow_variable
-
-    def interpolate_flow_data_from_image(
+    def compute_interpolator(
         self,
-        fluent_data_path,
         surface_list,
         main_axes,
-        link_H_world_ref_dict,
-        world_H_link_dict,
-        reference_joint_config_name="flight30",
-        reference_pitch_angle=30,
-        reference_yaw_angle=0,
     ):
-        self.get_surface_mesh_points(
-            fluent_data_path,
-            surface_list,
-            link_H_world_ref_dict,
-            world_H_link_dict,
-            reference_joint_config_name,
-            reference_pitch_angle,
-            reference_yaw_angle,
-        )
         for surface_index, surface_name in enumerate(surface_list):
             if main_axes[surface_index] == 0:
                 x = self.surface[surface_name].y_local
@@ -354,54 +344,51 @@ class FlowGenerator:
             r_mean = np.mean(r)
             theta = np.arctan2(y, x)
             theta_r = theta * r_mean
-            # Create a meshgrid for interpolation
+            # Define the image coordinates
             x_image = np.linspace(
                 np.min(theta_r),
                 np.max(theta_r),
                 self.surface[surface_name].image.shape[2],
             )
             y_image = np.linspace(
-                np.min(z), np.max(z), self.surface[surface_name].image.shape[1]
+                np.min(z),
+                np.max(z),
+                self.surface[surface_name].image.shape[1],
             )
-            X, Y = np.meshgrid(x_image, y_image)
-            points = np.vstack((X.ravel(), Y.ravel())).T
-            # Interpolate and extrapolate the data from the image
-            self.surface[surface_name].pressure_coefficient = (
-                self.interpolate_2D_flow_variable(
-                    self.surface[surface_name].image[0, :, :].ravel(),
-                    theta_r,
-                    z,
-                    points,
-                )
-            )
-            self.surface[surface_name].x_friction_coefficient = (
-                self.interpolate_2D_flow_variable(
-                    self.surface[surface_name].image[1, :, :].ravel(),
-                    theta_r,
-                    z,
-                    points,
-                )
-            )
-            self.surface[surface_name].y_friction_coefficient = (
-                self.interpolate_2D_flow_variable(
-                    self.surface[surface_name].image[2, :, :].ravel(),
-                    theta_r,
-                    z,
-                    points,
-                )
-            )
-            self.surface[surface_name].z_friction_coefficient = (
-                self.interpolate_2D_flow_variable(
-                    self.surface[surface_name].image[3, :, :].ravel(),
-                    theta_r,
-                    z,
-                    points,
-                )
+            # Create and assign interpolator functions
+            interp = RegularGridInterpolator(
+                (y_image, x_image),
+                np.zeros((len(y_image), len(x_image))),
+                method="linear",
+                bounds_error=False,
+                fill_value=None,
             )
             # Assign data
+            self.surface[surface_name].interp = interp
             self.surface[surface_name].z = z
             self.surface[surface_name].theta = theta
             self.surface[surface_name].theta_r = theta_r
+        return
+
+    def interpolate_flow_data(self, surface_list):
+        self.cp = np.empty(shape=(0,))
+        self.fx = np.empty(shape=(0,))
+        self.fy = np.empty(shape=(0,))
+        self.fz = np.empty(shape=(0,))
+        for surface_name in surface_list:
+            interp = self.surface[surface_name].interp
+            query_points = np.vstack(
+                (self.surface[surface_name].z, self.surface[surface_name].theta_r)
+            ).T
+            interp.values = self.surface[surface_name].image[0, :, :]
+            self.surface[surface_name].pressure_coefficient = interp(query_points)
+            interp.values = self.surface[surface_name].image[1, :, :]
+            self.surface[surface_name].x_friction_coefficient = interp(query_points)
+            interp.values = self.surface[surface_name].image[2, :, :]
+            self.surface[surface_name].y_friction_coefficient = interp(query_points)
+            interp.values = self.surface[surface_name].image[3, :, :]
+            self.surface[surface_name].z_friction_coefficient = interp(query_points)
+            # Assign data
             self.cp = np.append(
                 self.cp, self.surface[surface_name].pressure_coefficient
             )
@@ -414,7 +401,6 @@ class FlowGenerator:
             self.fz = np.append(
                 self.fz, self.surface[surface_name].z_friction_coefficient
             )
-            print(f"Surface {surface_name} data interpolated and assigned.")
         return
 
     def compute_forces(self, air_density, flow_velocity):
@@ -424,10 +410,14 @@ class FlowGenerator:
             shear_x = surface.x_friction_coefficient * dyn_pressure
             shear_y = surface.y_friction_coefficient * dyn_pressure
             shear_z = surface.z_friction_coefficient * dyn_pressure
-            areas = np.sqrt(surface.x_area**2 + surface.y_area**2 + surface.z_area**2)
-            d_force_x = pressure * surface.x_area + shear_x * areas
-            d_force_y = pressure * surface.y_area + shear_y * areas
-            d_force_z = pressure * surface.z_area + shear_z * areas
+            areas = np.sqrt(
+                surface.x_area_global**2
+                + surface.y_area_global**2
+                + surface.z_area_global**2
+            )
+            d_force_x = pressure * surface.x_area_global + shear_x * areas
+            d_force_y = pressure * surface.y_area_global + shear_y * areas
+            d_force_z = pressure * surface.z_area_global + shear_z * areas
             surface.global_force = np.array(
                 [
                     np.sum(d_force_x),
