@@ -28,3 +28,5 @@ dependencies:
     - open3d
     - wandb
     - plotly
+variables:
+  CUBLAS_WORKSPACE_CONFIG: :4096:8
