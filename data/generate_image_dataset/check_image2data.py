@@ -88,13 +88,11 @@ def main():
         )
         robot.set_state(pitch_angle, yaw_angle, joint_positions)
         end_time = time.time()
-        print(f"Time to set robot state: {end_time - start_time}")
 
         start_time = time.time()
         world_H_link_dict = robot.compute_all_world_H_link()
         flow.transform_mesh_points(robot.surface_list, world_H_link_dict)
         end_time = time.time()
-        print(f"Time to transform mesh points: {end_time - start_time}")
 
         # Load image data and separate single images
         start_time = time.time()
@@ -109,24 +107,20 @@ def main():
         )
         flow.separate_images(predicted_image, robot.surface_list)
         end_time = time.time()
-        print(f"Time to load and separate images: {end_time - start_time}")
 
         # Interpolate flow data
         start_time = time.time()
         flow.interpolate_flow_data(robot.surface_list)
         end_time = time.time()
-        print(f"Time to interpolate flow data: {end_time - start_time}")
 
         # Compute aerodynamic forces
         start_time = time.time()
         flow.compute_forces(air_density=1.225, flow_velocity=17.0)
         end_time = time.time()
-        print(f"Time to compute aerodynamic forces: {end_time - start_time}")
 
         aerodynamic_force = 0
         for surface in flow.surface.values():
             aerodynamic_force += surface.global_force
-        print(f"Total aerodynamic force: {aerodynamic_force}")
 
         print(f"Time for iteration {i}: {time.time() - iter_time}")
         iter_time = time.time()

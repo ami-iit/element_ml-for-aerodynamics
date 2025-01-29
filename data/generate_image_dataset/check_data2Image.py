@@ -14,9 +14,10 @@ from pathlib import Path
 from resolve_robotics_uri_py import resolve_robotics_uri
 from src.robot import Robot
 from src.flow import FlowImporter, FlowVisualizer
+import time
 
 
-SAVE_IMAGE = True
+SAVE_IMAGE = False
 
 
 def main():
@@ -51,7 +52,7 @@ def main():
     link_H_world_dict = robot.compute_all_link_H_world()
 
     # Import fluent data from all surfaces
-    print(f"Importing and transforming data ...")
+    start_time = time.time()
     flow.import_raw_fluent_data(
         data_path, joint_config_name, pitch_angle, yaw_angle, robot.surface_list
     )
@@ -59,12 +60,20 @@ def main():
         link_H_world_dict, flow_velocity=17.0, flow_density=1.225
     )
     flow.assign_global_fluent_data()
+    end_time = time.time()
+    print(f"Time to import and transform data: {end_time - start_time}")
 
     # Interpolate and generate images
-    print("Interpolating and generating images ...")
+    start_time = time.time()
     flow.interpolate_flow_data_and_assemble_image(
         robot.image_resolutions, robot.surface_list, robot.surface_axes
     )
+    end_time = time.time()
+    print(f"Time to interpolate and generate images: {end_time - start_time}")
+
+    nan_indices = np.where(np.isnan(flow.image))
+    print(f"Number of NaN values: {len(nan_indices[0])}")
+
     if SAVE_IMAGE:
         print("Saving assembled image ...")
         image_dir = Path(__file__).parents[0] / "images"
