@@ -1,8 +1,14 @@
 import numpy as np
+import pandas as pd
 import open3d as o3d
 from matplotlib.pyplot import Normalize
 from matplotlib import cm
-from scipy.interpolate import griddata, RegularGridInterpolator
+from scipy.interpolate import (
+    griddata,
+    RegularGridInterpolator,
+    LinearNDInterpolator,
+    NearestNDInterpolator,
+)
 from scipy.spatial.transform import Rotation as R
 from dataclasses import dataclass, field
 
@@ -65,16 +71,19 @@ class FlowImporter:
                     f"{joint_config_name}-{pitch_angle}-{yaw_angle}-{surface_name}.dtbs"
                 )
             )[0]
-            data = np.loadtxt(database_file_path, skiprows=1)
+            data = pd.read_csv(database_file_path, sep="\s+", skiprows=1, header=None)
             # Assign the data to the surface object
             surface_data = SurfaceData()
-            surface_data.x_global = data[:, 1]
-            surface_data.y_global = data[:, 2]
-            surface_data.z_global = data[:, 3]
-            surface_data.pressure = data[:, 4]
-            surface_data.x_shear_stress = data[:, 5]
-            surface_data.y_shear_stress = data[:, 6]
-            surface_data.z_shear_stress = data[:, 7]
+            surface_data.x_global = data.values[:, 1]
+            surface_data.y_global = data.values[:, 2]
+            surface_data.z_global = data.values[:, 3]
+            surface_data.pressure = data.values[:, 4]
+            surface_data.x_shear_stress = data.values[:, 5]
+            surface_data.y_shear_stress = data.values[:, 6]
+            surface_data.z_shear_stress = data.values[:, 7]
+            surface_data.x_area_global = data.values[:, 9]
+            surface_data.y_area_global = data.values[:, 10]
+            surface_data.z_area_global = data.values[:, 11]
             self.surface[surface_name] = surface_data
         return
 
@@ -83,19 +92,28 @@ class FlowImporter:
     ):
         for surface_name, surface_data in self.surface.items():
             link_H_world = link_H_world_dict[surface_name]
-            ones = np.ones((len(surface_data.x_global),))
-            global_coordinates = np.vstack(
-                (
-                    surface_data.x_global,
-                    surface_data.y_global,
-                    surface_data.z_global,
-                    ones,
-                )
-            ).T
-            local_coordinates = np.dot(link_H_world, global_coordinates.T).T
-            self.surface[surface_name].x_local = local_coordinates[:, 0]
-            self.surface[surface_name].y_local = local_coordinates[:, 1]
-            self.surface[surface_name].z_local = local_coordinates[:, 2]
+            # transform the data from world to reference link frame
+            (
+                surface_data.x_local,
+                surface_data.y_local,
+                surface_data.z_local,
+            ) = self.transform_points(
+                link_H_world,
+                surface_data.x_global,
+                surface_data.y_global,
+                surface_data.z_global,
+            )
+            (
+                surface_data.x_area_local,
+                surface_data.y_area_local,
+                surface_data.z_area_local,
+            ) = self.rotate_vectors(
+                link_H_world,
+                surface_data.x_area_global,
+                surface_data.y_area_global,
+                surface_data.z_area_global,
+            )
+            # Transform variables to coefficients
             self.surface[surface_name].pressure_coefficient = surface_data.pressure / (
                 0.5 * flow_density * flow_velocity**2
             )
@@ -110,6 +128,25 @@ class FlowImporter:
             )
         return
 
+    def transform_points(self, frame_1_H_frame_2, x, y, z):
+        ones = np.ones((len(x),))
+        starting_coordinates = np.vstack((x, y, z, ones)).T
+        ending_coordinates = np.dot(frame_1_H_frame_2, starting_coordinates.T).T
+        return (
+            ending_coordinates[:, 0],
+            ending_coordinates[:, 1],
+            ending_coordinates[:, 2],
+        )
+
+    def rotate_vectors(self, frame_1_H_frame_2, x, y, z):
+        starting_components = np.vstack((x, y, z)).T
+        ending_components = np.dot(frame_1_H_frame_2[:3, :3], starting_components.T).T
+        return (
+            ending_components[:, 0],
+            ending_components[:, 1],
+            ending_components[:, 2],
+        )
+
     def assign_global_fluent_data(self):
         for _, surface_data in self.surface.items():
             self.x = np.append(self.x, surface_data.x_global)
@@ -120,20 +157,6 @@ class FlowImporter:
             self.fy = np.append(self.fy, surface_data.y_friction_coefficient)
             self.fz = np.append(self.fz, surface_data.z_friction_coefficient)
         return
-
-    def interpolate_2D_flow_variable(self, flow_variable, theta, z, X, Y):
-        interp_flow_variable = np.zeros_like(X) * np.nan
-        interp_flow_variable = griddata(
-            (theta, z), flow_variable, (X, Y), method="linear"
-        )
-        outside_indices = np.isnan(interp_flow_variable)
-        interp_flow_variable[outside_indices] = griddata(
-            (theta, z),
-            flow_variable,
-            (X[outside_indices], Y[outside_indices]),
-            method="nearest",
-        )
-        return interp_flow_variable
 
     def interpolate_flow_data_and_assemble_image(
         self,
@@ -170,19 +193,70 @@ class FlowImporter:
             )
             y_image = np.linspace(np.min(z), np.max(z), int(image_resolution[0]))
             X, Y = np.meshgrid(x_image, y_image)
-            # Interpolate and extrapolate the pressure coefficient data
-            interp_press_coeff = self.interpolate_2D_flow_variable(
-                self.surface[surface_name].pressure_coefficient, theta_r, z, X, Y
+            # Interpolate the pressure coefficient data
+            points = np.vstack((z, theta_r)).T
+            query_points = np.vstack((Y.ravel(), X.ravel())).T
+            interpolator = LinearNDInterpolator(
+                points, self.surface[surface_name].pressure_coefficient.ravel()
             )
-            interp_x_friction_coeff = self.interpolate_2D_flow_variable(
-                self.surface[surface_name].x_friction_coefficient, theta_r, z, X, Y
+
+            interp_press_coeff = interpolator(query_points).reshape(X.shape)
+
+            interpolator.values = (
+                self.surface[surface_name].x_friction_coefficient.ravel().reshape(-1, 1)
             )
-            interp_y_friction_coeff = self.interpolate_2D_flow_variable(
-                self.surface[surface_name].y_friction_coefficient, theta_r, z, X, Y
+            interp_x_friction_coeff = interpolator(query_points).reshape(X.shape)
+
+            interpolator.values = (
+                self.surface[surface_name].y_friction_coefficient.ravel().reshape(-1, 1)
             )
-            interp_z_friction_coeff = self.interpolate_2D_flow_variable(
-                self.surface[surface_name].z_friction_coefficient, theta_r, z, X, Y
+            interp_y_friction_coeff = interpolator(query_points).reshape(X.shape)
+
+            interpolator.values = (
+                self.surface[surface_name].z_friction_coefficient.ravel().reshape(-1, 1)
             )
+            interp_z_friction_coeff = interpolator(query_points).reshape(X.shape)
+
+            # Extrapolate the data using nearest neighbors
+            out_ids = np.isnan(interp_press_coeff)
+            if np.any(out_ids):
+                extrapolator = NearestNDInterpolator(
+                    points,
+                    self.surface[surface_name]
+                    .pressure_coefficient.ravel()
+                    .reshape(-1, 1),
+                )
+                interp_press_coeff[out_ids] = extrapolator(query_points).reshape(
+                    X.shape
+                )[out_ids]
+
+                extrapolator.values = (
+                    self.surface[surface_name]
+                    .x_friction_coefficient.ravel()
+                    .reshape(-1, 1)
+                )
+                interp_x_friction_coeff[out_ids] = extrapolator(query_points).reshape(
+                    X.shape
+                )[out_ids]
+
+                extrapolator.values = (
+                    self.surface[surface_name]
+                    .y_friction_coefficient.ravel()
+                    .reshape(-1, 1)
+                )
+                interp_y_friction_coeff[out_ids] = extrapolator(query_points).reshape(
+                    X.shape
+                )[out_ids]
+
+                extrapolator.values = (
+                    self.surface[surface_name]
+                    .z_friction_coefficient.ravel()
+                    .reshape(-1, 1)
+                )
+                interp_z_friction_coeff[out_ids] = extrapolator(query_points).reshape(
+                    X.shape
+                )[out_ids]
+
             # Assign data
             self.surface[surface_name].z = z
             self.surface[surface_name].theta = theta
@@ -197,6 +271,30 @@ class FlowImporter:
             )
             self.image = np.concatenate(
                 (self.image, self.surface[surface_name].image), axis=0
+            )
+        return
+
+    def compute_forces(self, air_density, flow_velocity):
+        dyn_pressure = 0.5 * air_density * flow_velocity**2
+        for surface in self.surface.values():
+            pressure = surface.pressure_coefficient * dyn_pressure
+            shear_x = surface.x_friction_coefficient * dyn_pressure
+            shear_y = surface.y_friction_coefficient * dyn_pressure
+            shear_z = surface.z_friction_coefficient * dyn_pressure
+            areas = np.sqrt(
+                surface.x_area_global**2
+                + surface.y_area_global**2
+                + surface.z_area_global**2
+            )
+            d_force_x = pressure * surface.x_area_global + shear_x * areas
+            d_force_y = pressure * surface.y_area_global + shear_y * areas
+            d_force_z = pressure * surface.z_area_global + shear_z * areas
+            surface.global_force = np.array(
+                [
+                    np.sum(d_force_x),
+                    np.sum(d_force_y),
+                    np.sum(d_force_z),
+                ]
             )
         return
 
