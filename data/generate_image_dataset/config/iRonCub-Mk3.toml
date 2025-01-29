@@ -56,30 +56,6 @@ List = [
     "ironcub_torso_pitch",
     "ironcub_torso_roll",
 ]
-Skip_list = [
-    "ironcub_left_arm_pitch",
-    "ironcub_left_arm_roll",
-    "ironcub_right_arm_pitch",
-    "ironcub_right_arm_roll",
-    "ironcub_left_leg_pitch",
-    "ironcub_left_leg_yaw",
-    "ironcub_right_leg_pitch",
-    "ironcub_right_leg_yaw",
-    "ironcub_torso_pitch",
-    "ironcub_torso_roll",
-]
-Merge_list = [
-    "ironcub_left_arm",
-    "ironcub_left_arm",
-    "ironcub_right_arm",
-    "ironcub_right_arm",
-    "ironcub_left_leg_upper",
-    "ironcub_left_leg_lower",
-    "ironcub_right_leg_upper",
-    "ironcub_right_leg_lower",
-    "ironcub_torso",
-    "ironcub_root_link",
-]
 Frames = [
     "head",
     "chest_l_jet_turbine",
