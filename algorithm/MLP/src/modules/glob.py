@@ -9,6 +9,7 @@ config_path = None
 dataset_path = None
 wandb_logging = False
 run_name = None
+out_dir = "Out"
 
 # Training parameters
 mode = "mlp"
@@ -16,9 +17,7 @@ rnd_seed = None
 val_set = 15
 test_set = 0
 batch_size = 1000
-
 epochs = 1000
-
 lr = 1e-3
 reg_par = 1e-6
 
@@ -29,4 +28,5 @@ hid_layers = 5
 hid_dim = 256
 dropout = 0.0
 
-out_dir = "Out"
+# optuna parameters
+n_trials = 10

@@ -50,6 +50,7 @@ def read_config_file(file_path):
         "val_set": 15,
         "test_set": 0,
         "out_dir": "Out",
+        "n_trials": 10,
     }
     # Find keys present in dict1 but not in dict2
     keys_only_in_options = set(options.keys()) - set(default_values.keys())

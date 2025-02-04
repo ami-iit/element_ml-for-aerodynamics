@@ -15,7 +15,8 @@ import torch.jit
 import random as random
 import time as time
 import torchsummary
-from pathlib import Path
+import optuna
+from optuna.trial import TrialState
 
 from modules import preprocess as pre
 from modules import models as mod
@@ -34,8 +35,11 @@ def main():
     glob.config_path = str(sys.argv[1])
     options, default_values, add_opt = pre.read_config_file(glob.config_path)
 
+    # Define code mode
+    glob.mode = options["mode"].lower()
+
     # Init wandb logging
-    if options["wandb_logging"].lower() == "yes":
+    if options["wandb_logging"].lower() == "yes" and glob.mode != "mlp-tuning":
         print("Wandb logging enabled")
         glob.wandb_logging = True
         glob.run_name = log.init_wandb_project(options={**options, **add_opt})
@@ -90,9 +94,6 @@ def main():
     dl_val = torch.utils.data.DataLoader(
         data_val, batch_size=glob.batch_size, shuffle=False
     )
-
-    # Define code mode
-    glob.mode = options["mode"].lower()
 
     if glob.mode == "mlp":
         # Define the MLP model
@@ -158,6 +159,94 @@ def main():
         out.write_hystory(history)
         # Save the indices of the the sub-sets into an xlsx file
         out.write_datasets(indices, data_train.shape[0], data_val.shape[0])
+
+    elif glob.mode == "mlp-tuning":
+
+        # Define the objective function
+        def objective(trial):
+            glob.in_dim = int(options["in_dim"])
+            glob.out_dim = int(options["out_dim"])
+            glob.hid_layers = trial.suggest_int("hid_layers", 5, 9)
+            glob.hid_dim = trial.suggest_int("hid_dim", 256, 1024)
+            glob.dropout = trial.suggest_float("dropout", 0.0, 0.2)
+            model = mod.MLP().to(device)
+            # Initialize weights
+            init_weights = torch.empty(glob.in_dim, glob.hid_dim)
+            nn.init.xavier_normal_(init_weights)
+            # Define loss function
+            loss = torch.nn.MSELoss()
+            # Define optimizer
+            glob.lr = trial.suggest_float("lr", 1e-4, 1e-2)
+            glob.reg_par = trial.suggest_float("reg_par", 1e-9, 1e-5)
+            optimizer = torch.optim.Adam(
+                model.parameters(), lr=glob.lr, weight_decay=glob.reg_par
+            )
+            # Print model summary
+            print("Model summary")
+            torchsummary.summary(model.to(device), (glob.in_dim,))
+            # Move model to device
+            model.to(device)
+            # Count the number of trainable parameters
+            train_param = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            data_size = data_train.size
+            if data_size < train_param:
+                print(
+                    "Warning: the number of trainable parameters is greater than the dataset size"
+                )
+            # Training
+            glob.epochs = int(options["epochs"])
+            history, model, best_model = train.train_MLP(
+                dl_train,
+                dl_val,
+                model,
+                loss,
+                optimizer,
+                device,
+            )
+            # Generate output
+            print("Generating output")
+            # Generate output folder
+            glob.out_dir = out.gen_folder(options["out_dir"])
+            # Save the scaling values
+            out.save_scaling(scaling)
+            # save the trained and best encoder
+            out.save_model(
+                model,
+                optimizer,
+                torch.ones((1, glob.in_dim)),
+                best_model,
+            )
+            # save the history file
+            out.write_hystory(history)
+            # Save the indices of the the sub-sets into an xlsx file
+            out.write_datasets(indices, data_train.shape[0], data_val.shape[0])
+            # Compute optuna score
+            train_loss = history[-1][1]
+            val_loss = history[-1][2]
+            return val_loss
+
+        # Define the study
+        study = optuna.create_study(directions=["minimize"])
+        glob.n_trials = int(options["n_trials"])
+        study.optimize(objective, n_trials=glob.n_trials)
+
+        # get the output
+        pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
+        complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
+
+        print("Study statistics: ")
+        print("  Number of finished trials: ", len(study.trials))
+        print("  Number of pruned trials: ", len(pruned_trials))
+        print("  Number of complete trials: ", len(complete_trials))
+
+        print("Best trial:")
+        trial = study.best_trial
+
+        print("  Value: ", trial.value)
+
+        print("  Params: ")
+        for key, value in trial.params.items():
+            print("    {}: {}".format(key, value))
 
     else:
         sys.exit("\nERROR: " + options["mode"] + " mode not existing.\nTerminating!\n")
