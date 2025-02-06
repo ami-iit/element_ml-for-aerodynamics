@@ -12,6 +12,7 @@ import torch
 import torch.nn as nn
 import torch.onnx
 import torch.jit
+from torch.utils.data import DataLoader
 import random as random
 import time as time
 import torchsummary
@@ -88,12 +89,14 @@ def main():
 
     # Create dataloaders
     glob.batch_size = int(options["batch_size"])
-    dl_train = torch.utils.data.DataLoader(
-        data_train, batch_size=glob.batch_size, shuffle=False
+    train_dataset = mod.MlpDataset(
+        data_train[:, [0, 1, 2, 22, 23, 24]], data_train[:, [28, 29, 30, 31]]
     )
-    dl_val = torch.utils.data.DataLoader(
-        data_val, batch_size=glob.batch_size, shuffle=False
+    val_dataset = mod.MlpDataset(
+        data_val[:, [0, 1, 2, 22, 23, 24]], data_val[:, [28, 29, 30, 31]]
     )
+    train_dl = DataLoader(train_dataset, batch_size=glob.batch_size, shuffle=False)
+    val_dl = DataLoader(val_dataset, batch_size=glob.batch_size, shuffle=False)
 
     if glob.mode == "mlp":
         # Define the MLP model
@@ -134,8 +137,8 @@ def main():
         # Training
         glob.epochs = int(options["epochs"])
         history, model, best_model = train.train_MLP(
-            dl_train,
-            dl_val,
+            train_dl,
+            val_dl,
             model,
             loss,
             optimizer,
@@ -196,8 +199,8 @@ def main():
             # Training
             glob.epochs = int(options["epochs"])
             history, model, best_model = train.train_MLP(
-                dl_train,
-                dl_val,
+                train_dl,
+                val_dl,
                 model,
                 loss,
                 optimizer,

@@ -10,7 +10,7 @@ import wandb
 from modules import glob
 
 
-def train_MLP(train_dataset, val_dataset, model, loss, optimizer, device):
+def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
     outputs = []
     train_loss_avg = []
     min_loss_avg = []
@@ -27,17 +27,16 @@ def train_MLP(train_dataset, val_dataset, model, loss, optimizer, device):
         train_loss_avg.append(0)
         min_loss_avg.append(0)
         num_batches_train = 0
-        for batch in train_dataset:
-            # Get input: v_x, v_y, v_z, x, y, z
-            input = batch[:, [0, 1, 2, 22, 23, 24]].float().to(device)
-            # Get features: p, tau_x, tau_y, tau_z
-            features = batch[:, [28, 29, 30, 31]].float().to(device)
+        for features_batch, target_batch in train_dataloader:
+
+            features_batch = features_batch.to(device)
+            target_batch = target_batch.to(device)
 
             # Compute forward pass
-            output = model(input)
+            pred = model(features_batch)
 
             # Compute loss
-            train_loss = loss(output, features)
+            train_loss = loss(pred, target_batch)
 
             # Backward step
             optimizer.zero_grad()
@@ -51,11 +50,11 @@ def train_MLP(train_dataset, val_dataset, model, loss, optimizer, device):
         model.eval()
         val_loss_avg.append(0)
         num_batches_val = 0
-        for batch in val_dataset:
-            input = batch[:, [0, 1, 2, 22, 23, 24]].float().to(device)
-            features = batch[:, [28, 29, 30, 31]].float().to(device)
-            output = model(input)
-            val_loss = loss(output, features)
+        for features_batch, target_batch in val_dataloader:
+            features_batch = features_batch.to(device)
+            target_batch = target_batch.to(device)
+            pred = model(features_batch)
+            val_loss = loss(pred, target_batch)
             val_loss_avg[-1] += val_loss.item()
             num_batches_val += 1
 

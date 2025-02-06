@@ -7,6 +7,7 @@ Description:    Module for the learning architectures
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.data import Dataset
 
 from modules import glob
 
@@ -34,3 +35,20 @@ class MLP(nn.Module):
             input_layer_out = hidden_layer(input_layer_out)
         output = self.output_layer(input_layer_out)
         return output
+
+
+class MlpDataset(Dataset):
+    def __init__(self, X, y):
+        # convert into PyTorch tensors and remember them
+        self.X = torch.tensor(X, dtype=torch.float32)
+        self.Y = torch.tensor(y, dtype=torch.float32)
+
+    def __len__(self):
+        # this should return the size of the dataset
+        return len(self.X)
+
+    def __getitem__(self, idx):
+        # this should return one sample from the dataset
+        features = self.X[idx]
+        target = self.Y[idx]
+        return features, target
