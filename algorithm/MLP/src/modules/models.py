@@ -9,25 +9,25 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 
-from modules import glob
+from modules import globals as glvar
 
 
 # Multi Layer Perceptron
 class MLP(nn.Module):
     def __init__(self):
         super(MLP, self).__init__()
-        self.input_layer = nn.Linear(glob.in_dim, glob.hid_dim)
+        self.input_layer = nn.Linear(glvar.in_dim, glvar.hid_dim)
         self.hidden_layers = nn.ModuleList(
             [
                 nn.Sequential(
-                    nn.Linear(glob.hid_dim, glob.hid_dim),
+                    nn.Linear(glvar.hid_dim, glvar.hid_dim),
                     nn.ReLU(),
-                    nn.Dropout(p=glob.dropout),
+                    nn.Dropout(p=glvar.dropout),
                 )
-                for _ in range(glob.hid_layers)
+                for _ in range(glvar.hid_layers)
             ]
         )
-        self.output_layer = nn.Linear(glob.hid_dim, glob.out_dim)
+        self.output_layer = nn.Linear(glvar.hid_dim, glvar.out_dim)
 
     def forward(self, input):
         input_layer_out = F.relu(self.input_layer(input))

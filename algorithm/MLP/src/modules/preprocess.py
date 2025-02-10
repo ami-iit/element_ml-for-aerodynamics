@@ -11,13 +11,17 @@ import torch
 import sys
 import configparser
 import tabulate
+from pathlib import Path
 
-from modules import glob
+from modules import globals as glvar
 
 
 def read_config_file(file_path):
     # Create a temporary section header
     config_content = "[DEFAULT]\n"
+    if not Path(file_path).is_file():
+        print(f"\nConfiguration file {file_path} does not exist.\n")
+        sys.exit()
     with open(file_path, "r") as file:
         config_content += file.read()
 
@@ -57,18 +61,18 @@ def read_config_file(file_path):
     # Create a new dictionary with the additional values from dict1
     additional_values_dict = {key: options[key] for key in keys_only_in_options}
 
-    defVal = []
+    def_val = []
     # Check and set default values for missing options
     for option, default_value in default_values.items():
         if option not in config["DEFAULT"]:
-            defVal.append(str(option))
+            def_val.append(str(option))
             config.set("DEFAULT", option, str(default_value))
     # Retrieve options from the 'DEFAULT' section
     options = dict(config.items("DEFAULT"))
     # Remove the additional values from dict1
     for key in keys_only_in_options:
         del options[key]
-    return options, defVal, additional_values_dict
+    return options, def_val, additional_values_dict
 
 
 def print_options(options, default_values, keys_only_in_options):
@@ -100,8 +104,8 @@ def check_if_default(key, default_values):
 
 
 def load_dataset():
-    print(f"Loading dataset: {glob.dataset_path}")
-    datafile = np.load(glob.dataset_path, allow_pickle=True)
+    print(f"Loading dataset: {glvar.dataset_path}")
+    datafile = np.load(glvar.dataset_path, allow_pickle=True)
     data = datafile["data"].tolist()
     dataset = data["data"]
     pitch_angles = data["pitch_angles"]

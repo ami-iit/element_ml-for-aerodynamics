@@ -7,7 +7,7 @@ Description:    Module for training the learning algorithm.
 import time
 import wandb
 
-from modules import glob
+from modules import globals as glvar
 
 
 def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
@@ -21,7 +21,7 @@ def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
 
     start_time = time.time()
     min_val_loss = 1e6
-    while stop_train == False:
+    while not stop_train:
         model.train()
 
         train_loss_avg.append(0)
@@ -68,14 +68,14 @@ def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
 
         outputs.append((epoch, train_loss_avg[-1], val_loss_avg[-1]))
         print(
-            f"Epoch {epoch+1}/{glob.epochs}: Train loss: {train_loss_avg[-1]:5f}, Val loss: {val_loss_avg[-1]:.5f}"
+            f"Epoch {epoch+1}/{glvar.epochs}: Train loss: {train_loss_avg[-1]:5f}, Val loss: {val_loss_avg[-1]:.5f}"
         )
 
         epoch = epoch + 1
-        if epoch >= glob.epochs:
+        if epoch >= glvar.epochs:
             stop_train = True
 
-        if glob.wandb_logging:
+        if glvar.wandb_logging:
             wandb.log(
                 {
                     "train_loss": train_loss_avg[-1],

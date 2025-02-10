@@ -23,8 +23,11 @@ from modules import preprocess as pre
 from modules import models as mod
 from modules import train as train
 from modules import output as out
-from modules import glob
+from modules import globals as glvar
 from modules import log
+
+FEATURES_IDX = [0, 1, 2, 22, 23, 24]
+TARGET_IDX = [28, 29, 30, 31]
 
 
 def main():
@@ -33,23 +36,23 @@ def main():
     if len(sys.argv) < 2:
         print("\n\033[31mNo .cfg file provided in input.\nKilling execution \033[0m")
         sys.exit()
-    glob.config_path = str(sys.argv[1])
-    options, default_values, add_opt = pre.read_config_file(glob.config_path)
+    glvar.config_path = str(sys.argv[1])
+    options, default_values, add_opt = pre.read_config_file(glvar.config_path)
 
     # Define code mode
-    glob.mode = options["mode"].lower()
+    glvar.mode = options["mode"].lower()
 
     # Init wandb logging
-    if options["wandb_logging"].lower() == "yes" and glob.mode != "mlp-tuning":
+    if options["wandb_logging"].lower() == "yes" and glvar.mode != "mlp-tuning":
         print("Wandb logging enabled")
-        glob.wandb_logging = True
-        glob.run_name = log.init_wandb_project(options={**options, **add_opt})
+        glvar.wandb_logging = True
+        glvar.run_name = log.init_wandb_project(options={**options, **add_opt})
 
     # Print options for user check
     pre.print_options(options, default_values, add_opt)
 
     # Load dataset
-    glob.dataset_path = options["dataset_path"]
+    glvar.dataset_path = options["dataset_path"]
     dataset, _, _ = pre.load_dataset()
 
     # Initialize device
@@ -57,15 +60,15 @@ def main():
     print("Device: {}".format(device))
 
     # Set random seed
-    glob.rnd_seed = int(options["rnd_seed"])
-    pre.set_seed(glob.rnd_seed)
-    print(f"Random seed set as {glob.rnd_seed}")
+    glvar.rnd_seed = int(options["rnd_seed"])
+    pre.set_seed(glvar.rnd_seed)
+    print(f"Random seed set as {glvar.rnd_seed}")
 
     # Split dataset
-    glob.val_set = float(options["val_set"])
-    glob.test_set = float(options["test_set"])
+    glvar.val_set = float(options["val_set"])
+    glvar.test_set = float(options["test_set"])
     data_train_list, data_val_list, data_test_list, indices = pre.split_dataset(
-        dataset, glob.val_set, glob.test_set
+        dataset, glvar.val_set, glvar.test_set
     )
     # train_idx = indices[: len(data_train_list)]
     # val_idx = indices[len(data_train_list) : len(data_train_list) + len(data_val_list)]
@@ -88,40 +91,38 @@ def main():
         data_test = pre.scale_dataset(data_test, scaling)
 
     # Create dataloaders
-    glob.batch_size = int(options["batch_size"])
+    glvar.batch_size = int(options["batch_size"])
     train_dataset = mod.MlpDataset(
-        data_train[:, [0, 1, 2, 22, 23, 24]], data_train[:, [28, 29, 30, 31]]
+        data_train[:, FEATURES_IDX], data_train[:, TARGET_IDX]
     )
-    val_dataset = mod.MlpDataset(
-        data_val[:, [0, 1, 2, 22, 23, 24]], data_val[:, [28, 29, 30, 31]]
-    )
-    train_dl = DataLoader(train_dataset, batch_size=glob.batch_size, shuffle=False)
-    val_dl = DataLoader(val_dataset, batch_size=glob.batch_size, shuffle=False)
+    val_dataset = mod.MlpDataset(data_val[:, FEATURES_IDX], data_val[:, TARGET_IDX])
+    train_dl = DataLoader(train_dataset, batch_size=glvar.batch_size, shuffle=False)
+    val_dl = DataLoader(val_dataset, batch_size=glvar.batch_size, shuffle=False)
 
-    if glob.mode == "mlp":
+    if glvar.mode == "mlp":
         # Define the MLP model
-        glob.in_dim = int(options["in_dim"])
-        glob.out_dim = int(options["out_dim"])
-        glob.hid_layers = int(options["hid_layers"])
-        glob.hid_dim = int(options["hid_dim"])
-        glob.dropout = float(options["dropout"])
+        glvar.in_dim = int(options["in_dim"])
+        glvar.out_dim = int(options["out_dim"])
+        glvar.hid_layers = int(options["hid_layers"])
+        glvar.hid_dim = int(options["hid_dim"])
+        glvar.dropout = float(options["dropout"])
         model = mod.MLP().to(device)
 
         # Initialize weights
-        init_weights = torch.empty(glob.in_dim, glob.hid_dim)
+        init_weights = torch.empty(glvar.in_dim, glvar.hid_dim)
         nn.init.xavier_normal_(init_weights)
         # Define loss function
         loss = torch.nn.MSELoss()
         # Define optimizer
-        glob.lr = float(options["lr"])
-        glob.reg_par = float(options["reg_par"])
+        glvar.lr = float(options["lr"])
+        glvar.reg_par = float(options["reg_par"])
         optimizer = torch.optim.Adam(
-            model.parameters(), lr=glob.lr, weight_decay=glob.reg_par
+            model.parameters(), lr=glvar.lr, weight_decay=glvar.reg_par
         )
 
         # Print model summary
         print("Model summary")
-        torchsummary.summary(model.to(device), (glob.in_dim,))
+        torchsummary.summary(model.to(device), (glvar.in_dim,))
 
         # Move model to device
         model.to(device)
@@ -135,7 +136,7 @@ def main():
             )
 
         # Training
-        glob.epochs = int(options["epochs"])
+        glvar.epochs = int(options["epochs"])
         history, model, best_model = train.train_MLP(
             train_dl,
             val_dl,
@@ -148,14 +149,14 @@ def main():
         # Generate output
         print("Generating output")
         # Generate output folder
-        glob.out_dir = out.gen_folder(options["out_dir"])
+        glvar.out_dir = out.gen_folder(options["out_dir"])
         # Save the scaling values
         out.save_scaling(scaling)
         # save the trained and best encoder
         out.save_model(
             model,
             optimizer,
-            torch.ones((1, glob.in_dim)),
+            torch.ones((1, glvar.in_dim)),
             best_model,
         )
         # save the history file
@@ -163,30 +164,30 @@ def main():
         # Save the indices of the the sub-sets into an xlsx file
         out.write_datasets(indices, data_train.shape[0], data_val.shape[0])
 
-    elif glob.mode == "mlp-tuning":
+    elif glvar.mode == "mlp-tuning":
 
         # Define the objective function
         def objective(trial):
-            glob.in_dim = int(options["in_dim"])
-            glob.out_dim = int(options["out_dim"])
-            glob.hid_layers = trial.suggest_int("hid_layers", 5, 9)
-            glob.hid_dim = trial.suggest_int("hid_dim", 256, 1024)
-            glob.dropout = trial.suggest_float("dropout", 0.0, 0.2)
+            glvar.in_dim = int(options["in_dim"])
+            glvar.out_dim = int(options["out_dim"])
+            glvar.hid_layers = trial.suggest_int("hid_layers", 5, 9)
+            glvar.hid_dim = trial.suggest_int("hid_dim", 256, 1024)
+            glvar.dropout = trial.suggest_float("dropout", 0.0, 0.2)
             model = mod.MLP().to(device)
             # Initialize weights
-            init_weights = torch.empty(glob.in_dim, glob.hid_dim)
+            init_weights = torch.empty(glvar.in_dim, glvar.hid_dim)
             nn.init.xavier_normal_(init_weights)
             # Define loss function
             loss = torch.nn.MSELoss()
             # Define optimizer
-            glob.lr = trial.suggest_float("lr", 1e-4, 1e-2)
-            glob.reg_par = trial.suggest_float("reg_par", 1e-9, 1e-5)
+            glvar.lr = trial.suggest_float("lr", 1e-4, 1e-2)
+            glvar.reg_par = trial.suggest_float("reg_par", 1e-9, 1e-5)
             optimizer = torch.optim.Adam(
-                model.parameters(), lr=glob.lr, weight_decay=glob.reg_par
+                model.parameters(), lr=glvar.lr, weight_decay=glvar.reg_par
             )
             # Print model summary
             print("Model summary")
-            torchsummary.summary(model.to(device), (glob.in_dim,))
+            torchsummary.summary(model.to(device), (glvar.in_dim,))
             # Move model to device
             model.to(device)
             # Count the number of trainable parameters
@@ -197,7 +198,7 @@ def main():
                     "Warning: the number of trainable parameters is greater than the dataset size"
                 )
             # Training
-            glob.epochs = int(options["epochs"])
+            glvar.epochs = int(options["epochs"])
             history, model, best_model = train.train_MLP(
                 train_dl,
                 val_dl,
@@ -209,14 +210,14 @@ def main():
             # Generate output
             print("Generating output")
             # Generate output folder
-            glob.out_dir = out.gen_folder(options["out_dir"])
+            glvar.out_dir = out.gen_folder(options["out_dir"])
             # Save the scaling values
             out.save_scaling(scaling)
             # save the trained and best encoder
             out.save_model(
                 model,
                 optimizer,
-                torch.ones((1, glob.in_dim)),
+                torch.ones((1, glvar.in_dim)),
                 best_model,
             )
             # save the history file
@@ -230,8 +231,8 @@ def main():
 
         # Define the study
         study = optuna.create_study(directions=["minimize"])
-        glob.n_trials = int(options["n_trials"])
-        study.optimize(objective, n_trials=glob.n_trials)
+        glvar.n_trials = int(options["n_trials"])
+        study.optimize(objective, n_trials=glvar.n_trials)
 
         # get the output
         pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
@@ -255,7 +256,7 @@ def main():
         sys.exit("\nERROR: " + options["mode"] + " mode not existing.\nTerminating!\n")
 
     # WANDB LOGGING
-    if glob.wandb_logging:
+    if glvar.wandb_logging:
         # Log the aerodynamic forces error of the training set
         log.log_aerodynamic_forces_error(
             data_train_list,
