@@ -31,5 +31,7 @@ dependencies:
     - optuna
     - wandb
     - plotly
+    - onnx
+    - onnxruntime
 variables:
   CUBLAS_WORKSPACE_CONFIG: :4096:8

@@ -8,8 +8,8 @@ from pathlib import Path
 import numpy as np
 import wandb
 import torch
-import shutil
 import pandas
+import torch.onnx
 
 from modules import globals as glvar
 
@@ -45,7 +45,7 @@ def save_scaling(scaling_params):
 
 
 def save_model(model, optimizer, example, best_model=None):
-    print("Saving model as ckp_model.pt")
+    print("Saving checkpoint model as ckp_model.pt")
     checkpoint = {
         "epoch": glvar.epochs,
         "model": model,
@@ -53,39 +53,46 @@ def save_model(model, optimizer, example, best_model=None):
         "optimizer": optimizer,
         "optimizer_state": optimizer.state_dict(),
     }
-    best_model_path = glvar.out_dir + "/model.pt"
     checkpoint_path = glvar.out_dir + "/ckp_model.pt"
-    save_ckp(checkpoint, False, checkpoint_path, best_model_path)
-
+    torch.save(checkpoint, checkpoint_path)
     # save model for inference
     scripted_model = torch.jit.trace(model.eval().to("cpu"), example)
     scripted_model.save(glvar.out_dir + "/scripted_model.pt")
+    torch.onnx.export(
+        model.eval().to("cpu"),
+        example,
+        glvar.out_dir + "/model.onnx",
+        export_params=True,
+        opset_version=10,
+        do_constant_folding=True,
+        input_names=["input"],
+        output_names=["output"],
+        dynamic_axes={"input": {0: "batch_size"}, "output": {0: "batch_size"}},
+    )
     if best_model is not None:
         best_scripted_model = torch.jit.trace(best_model.eval().to("cpu"), example)
         best_scripted_model.save(glvar.out_dir + "/scripted_model_best.pt")
-
+        torch.onnx.export(
+            best_model.eval().to("cpu"),
+            example,
+            glvar.out_dir + "/model_best.onnx",
+            export_params=True,
+            opset_version=10,
+            do_constant_folding=True,
+            input_names=["input"],
+            output_names=["output"],
+            dynamic_axes={"input": {0: "batch_size"}, "output": {0: "batch_size"}},
+        )
     # Log the model to wandb
     if glvar.wandb_logging:
         model_artifact = wandb.Artifact("model", type="model")
         model_artifact.add_file(checkpoint_path)
         model_artifact.add_file(glvar.out_dir + "/scripted_model.pt")
+        model_artifact.add_file(glvar.out_dir + "/model.onnx")
         if best_model is not None:
             model_artifact.add_file(glvar.out_dir + "/scripted_model_best.pt")
+            model_artifact.add_file(glvar.out_dir + "/model_best.onnx")
         wandb.log_artifact(model_artifact, aliases=["latest", glvar.run_name])
-
-
-def save_ckp(state, is_best, checkpoint_path, best_model_path):
-    """
-    state: checkpoint we want to save
-    is_best: is this the best checkpoint; min validation loss
-    checkpoint_path: path to save checkpoint
-    best_model_path: path to save best model
-    """
-    f_path = checkpoint_path
-    torch.save(state, f_path)
-    if is_best:
-        best_fpath = best_model_path
-        shutil.copyfile(f_path, best_fpath)
 
 
 def write_hystory(history):
