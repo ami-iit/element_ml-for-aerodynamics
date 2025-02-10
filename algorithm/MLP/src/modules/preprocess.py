@@ -129,41 +129,26 @@ def set_seed(seed: int = 42) -> None:
 
 
 def compute_scaling(data):
-    max_wind_speed = np.max(np.abs(data[:, 0:3]))
-    x_min, x_max = np.min(data[:, 22]), np.max(data[:, 22])
-    y_min, y_max = np.min(data[:, 23]), np.max(data[:, 23])
-    z_min, z_max = np.min(data[:, 24]), np.max(data[:, 24])
-    cp_min, cp_max = np.min(data[:, 28]), np.max(data[:, 28])
-    cf_min, cf_max = np.min(data[:, 29:32]), np.max(data[:, 29:32])
-    return (
-        max_wind_speed,
-        x_min,
-        x_max,
-        y_min,
-        y_max,
-        z_min,
-        z_max,
-        cp_min,
-        cp_max,
-        cf_min,
-        cf_max,
-    )
+    max_wind_speed = np.max(np.abs(data[:, glvar.vel_idx]))
+    X_min = np.min(data[:, glvar.pos_idx], axis=0)
+    X_max = np.max(data[:, glvar.pos_idx], axis=0)
+    Y_min = np.min(data[:, glvar.flow_idx], axis=0)
+    Y_max = np.max(data[:, glvar.flow_idx], axis=0)
+    return max_wind_speed, X_min, X_max, Y_min, Y_max
 
 
 def scale_dataset(data, scaling):
-    # Scale relative wind velocity
-    data[:, 0:3] = data[:, 0:3] / scaling[0]
-    # Scale x,y,z positions
-    data[:, 22] = (data[:, 22] - scaling[1]) / (scaling[2] - scaling[1])
-    data[:, 23] = (data[:, 23] - scaling[3]) / (scaling[4] - scaling[3])
-    data[:, 24] = (data[:, 24] - scaling[5]) / (scaling[6] - scaling[5])
-    # Scale flow features
-    data[:, 28] = (data[:, 28] - scaling[7]) / (scaling[8] - scaling[7])
-    data[:, 29:32] = (data[:, 29:32] - scaling[9]) / (scaling[10] - scaling[9])
+    data[:, glvar.vel_idx] /= scaling[0]
+    data[:, glvar.pos_idx] = (data[:, glvar.pos_idx] - scaling[1]) / (
+        scaling[2] - scaling[1]
+    )
+    data[:, glvar.flow_idx] = (data[:, glvar.flow_idx] - scaling[3]) / (
+        scaling[4] - scaling[3]
+    )
     return data
 
 
-def split_dataset(dataset, pVal, pTest):
+def split_dataset(dataset, p_val, p_test):
     # Shuffle the dataset
     samples_num = len(dataset)
     indices = np.arange(samples_num)
@@ -171,17 +156,17 @@ def split_dataset(dataset, pVal, pTest):
     dataset = [dataset[i] for i in indices]
 
     # Split dataset into train, val, test
-    val_size = max(1, int(samples_num * pVal))
-    test_size = int(samples_num * pTest)
+    val_size = max(1, int(samples_num * p_val))
+    test_size = int(samples_num * p_test)
     split_index_val = samples_num - (val_size + test_size)
     split_index_test = split_index_val + val_size
 
     data_train = dataset[:split_index_val]
     data_val = (
         dataset[split_index_val:split_index_test]
-        if float(pTest) > 0
+        if float(p_test) > 0
         else dataset[split_index_val:]
     )
-    data_test = dataset[split_index_test:] if float(pTest) > 0 else None
+    data_test = dataset[split_index_test:] if float(p_test) > 0 else None
 
     return data_train, data_val, data_test, indices

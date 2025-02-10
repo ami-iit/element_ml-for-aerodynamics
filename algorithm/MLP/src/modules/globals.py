@@ -21,6 +21,10 @@ epochs = 1000
 lr = 1e-3
 reg_par = 1e-6
 
+vel_idx = [0, 1, 2]
+pos_idx = [22, 23, 24]
+flow_idx = [28, 29, 30, 31]
+
 # Model parameters
 in_dim = 6
 out_dim = 4

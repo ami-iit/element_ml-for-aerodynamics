@@ -26,8 +26,9 @@ from modules import output as out
 from modules import globals as glvar
 from modules import log
 
-FEATURES_IDX = [0, 1, 2, 22, 23, 24]
-TARGET_IDX = [28, 29, 30, 31]
+VEL_IDX = [0, 1, 2]
+POS_IDX = [22, 23, 24]
+FLOW_IDX = [28, 29, 30, 31]
 
 
 def main():
@@ -84,6 +85,9 @@ def main():
 
     # Scale dataset
     print("Scaling dataset")
+    glvar.vel_idx = VEL_IDX
+    glvar.pos_idx = POS_IDX
+    glvar.flow_idx = FLOW_IDX
     scaling = pre.compute_scaling(full_dataset)
     data_train = pre.scale_dataset(data_train, scaling)
     data_val = pre.scale_dataset(data_val, scaling)
@@ -93,9 +97,11 @@ def main():
     # Create dataloaders
     glvar.batch_size = int(options["batch_size"])
     train_dataset = mod.MlpDataset(
-        data_train[:, FEATURES_IDX], data_train[:, TARGET_IDX]
+        data_train[:, glvar.vel_idx + glvar.pos_idx], data_train[:, glvar.flow_idx]
     )
-    val_dataset = mod.MlpDataset(data_val[:, FEATURES_IDX], data_val[:, TARGET_IDX])
+    val_dataset = mod.MlpDataset(
+        data_val[:, glvar.vel_idx + glvar.pos_idx], data_val[:, glvar.flow_idx]
+    )
     train_dl = DataLoader(train_dataset, batch_size=glvar.batch_size, shuffle=False)
     val_dl = DataLoader(val_dataset, batch_size=glvar.batch_size, shuffle=False)
 
