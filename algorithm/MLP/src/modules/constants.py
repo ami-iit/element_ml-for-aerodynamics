@@ -32,7 +32,9 @@ class Const:
         self.reg_par = 1e-6
         self.vel_idx = [0, 1, 2]
         self.pos_idx = [22, 23, 24]
+        self.face_normal_idx = [25, 26, 27]
         self.flow_idx = [28, 29, 30, 31]
+        self.area_idx = [32]
         # model parameters
         self.in_dim = 6
         self.out_dim = 4

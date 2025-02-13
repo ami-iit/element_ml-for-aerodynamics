@@ -8,6 +8,8 @@ import wandb
 import sys
 import numpy as np
 
+from modules.constants import Const
+
 
 def init_wandb_project(options):
     if options["entity"] is None and options["project"] is None:
@@ -37,46 +39,30 @@ def log_aerodynamic_forces_error(
     aero_force_errors = np.zeros((len(dataset_list), 3))
     for i, sim in enumerate(dataset_list):
         # Get input: v_x, v_y, v_z, x, y, z
-        input = sim[:, [0, 1, 2, 22, 23, 24]].float().to(device)
+        input = sim[:, Const.vel_idx + Const.pos_idx].float().to(device)
+        input[:, :3] /= scaling[0]
+        input[:, 3:] = (input[:, 3:] - scaling[1]) / (scaling[2] - scaling[1])
         # Compute forward pass
         model.to(device)
         model.eval()
         output = model(input).detach().cpu().numpy()
         # Rescale output
-        press_coeff = output[:, 0] * (scaling[8] - scaling[7]) + scaling[7]
-        x_fric_coeff = output[:, 1] * (scaling[10] - scaling[9]) + scaling[9]
-        y_fric_coeff = output[:, 2] * (scaling[10] - scaling[9]) + scaling[9]
-        z_fric_coeff = output[:, 3] * (scaling[10] - scaling[9]) + scaling[9]
-        # Compute centroidal aerodynamic force
+        output = output * (scaling[4] - scaling[3]) + scaling[3]
+        press_coeff = output[:, 0]
+        fric_coeff = output[:, 1:]
+        # Compute predicted centroidal aerodynamic force
         dyn_press = 0.5 * 1.225 * 17.0**2
-        face_normals = sim[:, 25:28]
-        areas = sim[:, 32]
+        face_normals = sim[:, Const.face_normal_idx].float()
+        areas = sim[:, Const.area_idx].float()
         pressure = press_coeff * dyn_press
-        shear_x = x_fric_coeff * dyn_press
-        shear_y = y_fric_coeff * dyn_press
-        shear_z = z_fric_coeff * dyn_press
-        d_force_x = pressure * face_normals[:, 0] * areas + shear_x * areas
-        d_force_y = pressure * face_normals[:, 1] * areas + shear_y * areas
-        d_force_z = pressure * face_normals[:, 2] * areas + shear_z * areas
-        pred_aero_force = np.array(
-            [np.sum(d_force_x), np.sum(d_force_y), np.sum(d_force_z)]
-        )
-        # Rescale dataset flow variables
-        cp_data = sim[:, 28] * (scaling[8] - scaling[7]) + scaling[7]
-        fx_data = sim[:, 29] * (scaling[10] - scaling[9]) + scaling[9]
-        fy_data = sim[:, 30] * (scaling[10] - scaling[9]) + scaling[9]
-        fz_data = sim[:, 31] * (scaling[10] - scaling[9]) + scaling[9]
+        friction = fric_coeff * dyn_press
+        d_force = pressure * face_normals * areas + friction * areas
+        pred_aero_force = np.sum(d_force, axis=0)
         # Compute dataset aerodynamic force
-        pressure = cp_data * dyn_press
-        shear_x = fx_data * dyn_press
-        shear_y = fy_data * dyn_press
-        shear_z = fz_data * dyn_press
-        d_force_x = pressure * face_normals[:, 0] * areas + shear_x * areas
-        d_force_y = pressure * face_normals[:, 1] * areas + shear_y * areas
-        d_force_z = pressure * face_normals[:, 2] * areas + shear_z * areas
-        dataset_aero_force = np.array(
-            [np.sum(d_force_x), np.sum(d_force_y), np.sum(d_force_z)]
-        )
+        pressure = sim[:, Const.flow_idx[0]] * dyn_press
+        friction = sim[:, Const.flow_idx[1:]] * dyn_press
+        d_force = pressure * face_normals * areas + friction * areas
+        dataset_aero_force = np.sum(d_force, axis=0)
         # Compute error
         aero_force_errors[i, :] = np.abs(dataset_aero_force - pred_aero_force)
     # Compute Mean Squared Error
