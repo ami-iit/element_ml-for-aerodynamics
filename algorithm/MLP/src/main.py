@@ -23,37 +23,33 @@ from modules import preprocess as pre
 from modules import models as mod
 from modules import train as train
 from modules import output as out
-from modules import globals as glvar
 from modules import log
-
-VEL_IDX = [0, 1, 2]
-POS_IDX = [22, 23, 24]
-FLOW_IDX = [28, 29, 30, 31]
+from modules.constants import Const
 
 
 def main():
+    # Get default values
+    default_values = Const.get_default_values()
     # Read configuration file
     print("Reading config file")
     if len(sys.argv) < 2:
         print("\n\033[31mNo .cfg file provided in input.\nKilling execution \033[0m")
         sys.exit()
-    glvar.config_path = str(sys.argv[1])
-    options, default_values, add_opt = pre.read_config_file(glvar.config_path)
+    Const.config_path = str(sys.argv[1])
+    config_options = pre.read_config_file(Const.config_path)
 
-    # Define code mode
-    glvar.mode = options["mode"].lower()
+    # Set constant values from options dictionary
+    Const.set_val_from_options(config_options)
 
     # Init wandb logging
-    if options["wandb_logging"].lower() == "yes" and glvar.mode != "mlp-tuning":
+    if Const.wandb_logging and Const.mode != "mlp-tuning":
         print("Wandb logging enabled")
-        glvar.wandb_logging = True
-        glvar.run_name = log.init_wandb_project(options={**options, **add_opt})
+        Const.run_name = log.init_wandb_project(options=config_options)
 
     # Print options for user check
-    pre.print_options(options, default_values, add_opt)
+    pre.print_options(config_options, default_values)
 
     # Load dataset
-    glvar.dataset_path = options["dataset_path"]
     dataset, _, _ = pre.load_dataset()
 
     # Initialize device
@@ -61,15 +57,12 @@ def main():
     print("Device: {}".format(device))
 
     # Set random seed
-    glvar.rnd_seed = int(options["rnd_seed"])
-    pre.set_seed(glvar.rnd_seed)
-    print(f"Random seed set as {glvar.rnd_seed}")
+    pre.set_seed(Const.rnd_seed)
+    print(f"Random seed set as {Const.rnd_seed}")
 
     # Split dataset
-    glvar.val_set = float(options["val_set"])
-    glvar.test_set = float(options["test_set"])
     data_train_list, data_val_list, data_test_list, indices = pre.split_dataset(
-        dataset, glvar.val_set, glvar.test_set
+        dataset, Const.val_set, Const.test_set
     )
     # train_idx = indices[: len(data_train_list)]
     # val_idx = indices[len(data_train_list) : len(data_train_list) + len(data_val_list)]
@@ -79,15 +72,15 @@ def main():
     data_train = np.concatenate(data_train_list, axis=0)
     data_val = np.concatenate(data_val_list, axis=0)
     full_dataset = np.concatenate((data_train, data_val), axis=0)
+    print(f"Training set size: {data_train.shape}")
+    print(f"Validation set size: {data_val.shape}")
     if data_test_list:
         data_test = np.concatenate(data_test_list, axis=0)
         full_dataset = np.concatenate((full_dataset, data_test), axis=0)
+        print(f"Testing set size: {data_test.shape}")
 
     # Scale dataset
     print("Scaling dataset")
-    glvar.vel_idx = VEL_IDX
-    glvar.pos_idx = POS_IDX
-    glvar.flow_idx = FLOW_IDX
     scaling = pre.compute_scaling(full_dataset)
     data_train = pre.scale_dataset(data_train, scaling)
     data_val = pre.scale_dataset(data_val, scaling)
@@ -95,40 +88,36 @@ def main():
         data_test = pre.scale_dataset(data_test, scaling)
 
     # Create dataloaders
-    glvar.batch_size = int(options["batch_size"])
     train_dataset = mod.MlpDataset(
-        data_train[:, glvar.vel_idx + glvar.pos_idx], data_train[:, glvar.flow_idx]
+        data_train[:, Const.vel_idx + Const.pos_idx],
+        data_train[:, Const.flow_idx],
+        Const.batch_size,
     )
     val_dataset = mod.MlpDataset(
-        data_val[:, glvar.vel_idx + glvar.pos_idx], data_val[:, glvar.flow_idx]
+        data_val[:, Const.vel_idx + Const.pos_idx],
+        data_val[:, Const.flow_idx],
+        Const.batch_size,
     )
-    train_dl = DataLoader(train_dataset, batch_size=glvar.batch_size, shuffle=False)
-    val_dl = DataLoader(val_dataset, batch_size=glvar.batch_size, shuffle=False)
+    train_dl = DataLoader(train_dataset, batch_size=1, shuffle=False)
+    val_dl = DataLoader(val_dataset, batch_size=1, shuffle=False)
 
-    if glvar.mode == "mlp":
+    if Const.mode == "mlp":
         # Define the MLP model
-        glvar.in_dim = int(options["in_dim"])
-        glvar.out_dim = int(options["out_dim"])
-        glvar.hid_layers = int(options["hid_layers"])
-        glvar.hid_dim = int(options["hid_dim"])
-        glvar.dropout = float(options["dropout"])
         model = mod.MLP().to(device)
 
         # Initialize weights
-        init_weights = torch.empty(glvar.in_dim, glvar.hid_dim)
+        init_weights = torch.empty(Const.in_dim, Const.hid_dim)
         nn.init.xavier_normal_(init_weights)
         # Define loss function
         loss = torch.nn.MSELoss()
         # Define optimizer
-        glvar.lr = float(options["lr"])
-        glvar.reg_par = float(options["reg_par"])
         optimizer = torch.optim.Adam(
-            model.parameters(), lr=glvar.lr, weight_decay=glvar.reg_par
+            model.parameters(), lr=Const.lr, weight_decay=Const.reg_par
         )
 
         # Print model summary
         print("Model summary")
-        torchsummary.summary(model.to(device), (glvar.in_dim,))
+        torchsummary.summary(model.to(device), (Const.in_dim,))
 
         # Move model to device
         model.to(device)
@@ -142,7 +131,6 @@ def main():
             )
 
         # Training
-        glvar.epochs = int(options["epochs"])
         history, model, best_model = train.train_MLP(
             train_dl,
             val_dl,
@@ -155,14 +143,14 @@ def main():
         # Generate output
         print("Generating output")
         # Generate output folder
-        glvar.out_dir = out.gen_folder(options["out_dir"])
+        Const.out_dir = out.gen_folder(Const.out_dir)
         # Save the scaling values
         out.save_scaling(scaling)
         # save the trained and best encoder
         out.save_model(
             model,
             optimizer,
-            torch.ones((1, glvar.in_dim)),
+            torch.ones((1, Const.in_dim)),
             best_model,
         )
         # save the history file
@@ -170,30 +158,25 @@ def main():
         # Save the indices of the the sub-sets into an xlsx file
         out.write_datasets(indices, data_train.shape[0], data_val.shape[0])
 
-    elif glvar.mode == "mlp-tuning":
+    elif Const.mode == "mlp-tuning":
 
         # Define the objective function
         def objective(trial):
-            glvar.in_dim = int(options["in_dim"])
-            glvar.out_dim = int(options["out_dim"])
-            glvar.hid_layers = trial.suggest_int("hid_layers", 5, 9)
-            glvar.hid_dim = trial.suggest_int("hid_dim", 256, 1024)
-            glvar.dropout = trial.suggest_float("dropout", 0.0, 0.2)
             model = mod.MLP().to(device)
             # Initialize weights
-            init_weights = torch.empty(glvar.in_dim, glvar.hid_dim)
+            init_weights = torch.empty(Const.in_dim, Const.hid_dim)
             nn.init.xavier_normal_(init_weights)
             # Define loss function
             loss = torch.nn.MSELoss()
             # Define optimizer
-            glvar.lr = trial.suggest_float("lr", 1e-4, 1e-2)
-            glvar.reg_par = trial.suggest_float("reg_par", 1e-9, 1e-5)
+            Const.lr = trial.suggest_float("lr", 1e-4, 1e-2)
+            Const.reg_par = trial.suggest_float("reg_par", 1e-9, 1e-5)
             optimizer = torch.optim.Adam(
-                model.parameters(), lr=glvar.lr, weight_decay=glvar.reg_par
+                model.parameters(), lr=Const.lr, weight_decay=Const.reg_par
             )
             # Print model summary
             print("Model summary")
-            torchsummary.summary(model.to(device), (glvar.in_dim,))
+            torchsummary.summary(model.to(device), (Const.in_dim,))
             # Move model to device
             model.to(device)
             # Count the number of trainable parameters
@@ -204,7 +187,6 @@ def main():
                     "Warning: the number of trainable parameters is greater than the dataset size"
                 )
             # Training
-            glvar.epochs = int(options["epochs"])
             history, model, best_model = train.train_MLP(
                 train_dl,
                 val_dl,
@@ -213,23 +195,6 @@ def main():
                 optimizer,
                 device,
             )
-            # Generate output
-            print("Generating output")
-            # Generate output folder
-            glvar.out_dir = out.gen_folder(options["out_dir"])
-            # Save the scaling values
-            out.save_scaling(scaling)
-            # save the trained and best encoder
-            out.save_model(
-                model,
-                optimizer,
-                torch.ones((1, glvar.in_dim)),
-                best_model,
-            )
-            # save the history file
-            out.write_hystory(history)
-            # Save the indices of the the sub-sets into an xlsx file
-            out.write_datasets(indices, data_train.shape[0], data_val.shape[0])
             # Compute optuna score
             train_loss = history[-1][1]
             val_loss = history[-1][2]
@@ -237,8 +202,7 @@ def main():
 
         # Define the study
         study = optuna.create_study(directions=["minimize"])
-        glvar.n_trials = int(options["n_trials"])
-        study.optimize(objective, n_trials=glvar.n_trials)
+        study.optimize(objective, n_trials=Const.n_trials)
 
         # get the output
         pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
@@ -259,10 +223,10 @@ def main():
             print("    {}: {}".format(key, value))
 
     else:
-        sys.exit("\nERROR: " + options["mode"] + " mode not existing.\nTerminating!\n")
+        sys.exit("\nERROR: " + Const.mode + " mode not existing.\nTerminating!\n")
 
     # WANDB LOGGING
-    if glvar.wandb_logging:
+    if Const.wandb_logging:
         # Log the aerodynamic forces error of the training set
         log.log_aerodynamic_forces_error(
             data_train_list,

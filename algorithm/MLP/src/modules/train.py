@@ -6,8 +6,10 @@ Description:    Module for training the learning algorithm.
 
 import time
 import wandb
+import torch
+from torch import autocast
 
-from modules import globals as glvar
+from modules.constants import Const
 
 
 def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
@@ -21,7 +23,12 @@ def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
 
     start_time = time.time()
     min_val_loss = 1e6
+
+    train_len = len(train_dataloader)
+    val_len = len(val_dataloader)
+    print("\nStarting the training \n")
     while not stop_train:
+        time_start = time.time()
         model.train()
 
         train_loss_avg.append(0)
@@ -47,6 +54,10 @@ def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
             train_loss_avg[-1] += train_loss.item()
             num_batches_train += 1
 
+            print(
+                f"train step {num_batches_train}/{train_len} - loss: {train_loss.item()}",
+            )
+
         model.eval()
         val_loss_avg.append(0)
         num_batches_val = 0
@@ -57,6 +68,11 @@ def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
             val_loss = loss(pred, target_batch)
             val_loss_avg[-1] += val_loss.item()
             num_batches_val += 1
+            print(
+                f"val step {num_batches_val}/{val_len} - loss: {val_loss.item()}",
+                end="\r",
+                flush=True,
+            )
 
         train_loss_avg[-1] /= num_batches_train
         val_loss_avg[-1] /= num_batches_val
@@ -66,16 +82,17 @@ def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
             best_epoch = epoch
             min_val_loss = val_loss_avg[-1]
 
+        time_end = time.time()
         outputs.append((epoch, train_loss_avg[-1], val_loss_avg[-1]))
         print(
-            f"Epoch {epoch+1}/{glvar.epochs}: Train loss: {train_loss_avg[-1]:5f}, Val loss: {val_loss_avg[-1]:.5f}"
+            f"Epoch {epoch+1}/{Const.epochs}: Train loss: {train_loss_avg[-1]:5f}, Val loss: {val_loss_avg[-1]:.5f}, iter time: {time_end - time_start:.2f} s"
         )
 
         epoch = epoch + 1
-        if epoch >= glvar.epochs:
+        if epoch >= Const.epochs:
             stop_train = True
 
-        if glvar.wandb_logging:
+        if Const.wandb_logging:
             wandb.log(
                 {
                     "train_loss": train_loss_avg[-1],
