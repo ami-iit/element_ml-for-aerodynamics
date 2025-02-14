@@ -18,6 +18,7 @@ import time as time
 import torchsummary
 import optuna
 from optuna.trial import TrialState
+import wandb
 
 from modules import preprocess as pre
 from modules import models as mod
@@ -160,8 +161,17 @@ def main():
 
     elif Const.mode == "mlp-tuning":
 
+        Const.optuna_trial = 0
+
         # Define the objective function
         def objective(trial):
+            print(f"Optuna trial: {Const.optuna_trial}")
+            Const.lr = trial.suggest_float("lr", 1e-4, 1e-2)
+            Const.reg_par = trial.suggest_float("reg_par", 1e-9, 1e-5)
+            Const.hid_layers = trial.suggest_int("hid_layers", 3, 7)
+            hid_dim_pow = trial.suggest_int("hid_dim_pow", 7, 10)
+            Const.hid_dim = int(2**hid_dim_pow)
+            # Define the MLP model
             model = mod.MLP().to(device)
             # Initialize weights
             init_weights = torch.empty(Const.in_dim, Const.hid_dim)
@@ -169,8 +179,6 @@ def main():
             # Define loss function
             loss = torch.nn.MSELoss()
             # Define optimizer
-            Const.lr = trial.suggest_float("lr", 1e-4, 1e-2)
-            Const.reg_par = trial.suggest_float("reg_par", 1e-9, 1e-5)
             optimizer = torch.optim.Adam(
                 model.parameters(), lr=Const.lr, weight_decay=Const.reg_par
             )
@@ -186,6 +194,16 @@ def main():
                 print(
                     "Warning: the number of trainable parameters is greater than the dataset size"
                 )
+            # Log optuna parameters
+            if Const.wandb_logging:
+                wandb.log(
+                    {
+                        "lr": Const.lr,
+                        "reg_par": Const.reg_par,
+                        "hid_layers": Const.hid_layers,
+                        "hid_dim": Const.hid_dim,
+                    }
+                )
             # Training
             history, model, best_model = train.train_MLP(
                 train_dl,
@@ -198,6 +216,14 @@ def main():
             # Compute optuna score
             train_loss = history[-1][1]
             val_loss = history[-1][2]
+            if Const.wandb_logging:
+                wandb.log(
+                    {
+                        "pareto_train_loss": train_loss,
+                        "pareto_val_loss": val_loss,
+                    }
+                )
+            Const.optuna_trial += 1
             return val_loss
 
         # Define the study
