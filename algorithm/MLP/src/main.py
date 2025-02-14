@@ -43,7 +43,7 @@ def main():
     Const.set_val_from_options(config_options)
 
     # Init wandb logging
-    if Const.wandb_logging and Const.mode != "mlp-tuning":
+    if Const.wandb_logging:
         print("Wandb logging enabled")
         Const.run_name = log.init_wandb_project(options=config_options)
 
@@ -165,7 +165,7 @@ def main():
 
         # Define the objective function
         def objective(trial):
-            print(f"Optuna trial: {Const.optuna_trial}")
+            print(f"Optuna trial: {Const.optuna_trial}/{Const.n_trials}")
             Const.lr = trial.suggest_float("lr", 1e-4, 1e-2)
             Const.reg_par = trial.suggest_float("reg_par", 1e-9, 1e-5)
             Const.hid_layers = trial.suggest_int("hid_layers", 3, 7)
@@ -194,16 +194,6 @@ def main():
                 print(
                     "Warning: the number of trainable parameters is greater than the dataset size"
                 )
-            # Log optuna parameters
-            if Const.wandb_logging:
-                wandb.log(
-                    {
-                        "lr": Const.lr,
-                        "reg_par": Const.reg_par,
-                        "hid_layers": Const.hid_layers,
-                        "hid_dim": Const.hid_dim,
-                    }
-                )
             # Training
             history, model, best_model = train.train_MLP(
                 train_dl,
@@ -219,6 +209,10 @@ def main():
             if Const.wandb_logging:
                 wandb.log(
                     {
+                        "lr": Const.lr,
+                        "reg_par": Const.reg_par,
+                        "hid_layers": Const.hid_layers,
+                        "hid_dim": Const.hid_dim,
                         "pareto_train_loss": train_loss,
                         "pareto_val_loss": val_loss,
                     }
@@ -252,7 +246,7 @@ def main():
         sys.exit("\nERROR: " + Const.mode + " mode not existing.\nTerminating!\n")
 
     # WANDB LOGGING
-    if Const.wandb_logging:
+    if Const.wandb_logging and Const.mode != "mlp-tuning":
         # Log the aerodynamic forces error of the training set
         log.log_aerodynamic_forces_error(
             data_train_list,
@@ -280,8 +274,6 @@ def main():
             )
         # Close wandb logging
         log.wandb.finish()
-
-    print("checkpoint")
 
 
 if __name__ == "__main__":
