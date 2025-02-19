@@ -54,10 +54,6 @@ def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
             train_loss_avg[-1] += train_loss.item()
             num_batches_train += 1
 
-            print(
-                f"train step {num_batches_train}/{train_len} - loss: {train_loss.item()}",
-            )
-
         model.eval()
         val_loss_avg.append(0)
         num_batches_val = 0
@@ -68,11 +64,6 @@ def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
             val_loss = loss(pred, target_batch)
             val_loss_avg[-1] += val_loss.item()
             num_batches_val += 1
-            print(
-                f"val step {num_batches_val}/{val_len} - loss: {val_loss.item()}",
-                end="\r",
-                flush=True,
-            )
 
         train_loss_avg[-1] /= num_batches_train
         val_loss_avg[-1] /= num_batches_val
