@@ -74,7 +74,7 @@ def main():
                 )
             )
             # Append data to current configuration data
-            config_data["data"].append(sim_data.astype(np.float16))
+            config_data["data"].append(sim_data.astype(np.float32))
             config_data["pitch_angles"].append(pitch_angle)
             config_data["yaw_angles"].append(yaw_angle)
             # Print progress
