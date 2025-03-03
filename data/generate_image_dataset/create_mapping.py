@@ -1,8 +1,7 @@
 import numpy as np
-import open3d as o3d
 from pathlib import Path
 
-from src.ansys import read_fluent_mesh_file, warn
+import src.ansys as ans
 import src.mesh as ms
 import src.sdem as sdem
 import src.mapping as mp
@@ -13,11 +12,8 @@ SHOW_PLOTS = False
 def main():
 
     # Get the path to the raw data
-    # data_dir = input("Enter the path to the fluent msh directory: ")
-    # data_path = Path(str(data_dir).strip())
-    data_path = Path(
-        r"C:\Users\apaolino\code\element_cfd-simulation\simulations\pyfluent\meshing\mesh\mk3\msh"
-    )
+    data_dir = input("Enter the path to the fluent msh directory: ")
+    data_path = Path(str(data_dir).strip())
     # Get the list of files and build the data dictionary
     files = [file for file in data_path.rglob("*.msh") if file.is_file()]
     config_names = sorted(list(set([file.stem.split("-")[0] for file in files])))
@@ -33,7 +29,7 @@ def main():
         surface_name = file.stem.split("-")[1]
 
         # Import and close mesh from Fluent format
-        nodes, faces = read_fluent_mesh_file(file)
+        nodes, faces = ans.read_fluent_mesh_file(file)
         # Create and visualize open mesh
         mesh = ms.create_mesh_from_faces(nodes, faces)
         mesh = ms.close_mesh_boundaries(mesh)
@@ -41,8 +37,7 @@ def main():
         ms.visualize_mesh_with_edges(mesh) if SHOW_PLOTS else None
         # Check if mesh is genus-0
         if len(mesh.vertices) - 3 * len(mesh.triangles) / 2 + len(mesh.triangles) != 2:
-            warn("The mesh is not a genus-0 closed surface.")
-            Warning("The mesh is not a genus-0 closed surface.")
+            ans.warn("The mesh is not a genus-0 closed surface.")
 
         # Spherical conformal mapping and Mobius area correction
         v = np.array(mesh.vertices)
@@ -91,7 +86,7 @@ def main():
         print(f"{config_name}-{surface_name} mapping generated.")
     # Save map data to file
     for key in data.keys():
-        np.save(map_dir / f"{key}-map.npy", data[key])
+        np.save(map_dir / f"{key}-node-map.npy", data[key])
 
 
 if __name__ == "__main__":

@@ -30,9 +30,6 @@ class SurfaceData:
 class FlowImporter:
     def __init__(self):
         self.surface = {}
-        self.w_nodes = np.empty(shape=(0, 3))
-        self.cp = np.empty(shape=(0,))
-        self.cf = np.empty(shape=(0, 3))
 
     def import_mesh_mapping_data(self, data, surface_list, link_H_world_dict):
         for s_name in surface_list:
@@ -46,31 +43,45 @@ class FlowImporter:
             s_data.mesh_nodes = self.transform_points(link_H_world, w_mesh_nodes)
         return
 
-    def import_raw_fluent_data(
+    def import_node_data(
         self,
         data_path,
         config_name,
         pitch,
         yaw,
     ):
+        self.w_nodes = np.empty(shape=(0, 3))
         for s_name, s_data in self.surface.items():
             filename = f"{config_name}-{pitch}-{yaw}-{s_name}.dtbs"
             filepath = list(data_path.rglob(filename))[0]
             data = pd.read_csv(filepath, sep="\s+", skiprows=1, header=None)
             s_data.w_nodes = data.values[:, 1:4]
             s_data.pressure = data.values[:, 4]
-            s_data.w_shear_stress = data.values[:, 5:8]
+            s_data.friction = data.values[:, 5:8]
+            self.w_nodes = np.append(self.w_nodes, s_data.w_nodes, axis=0)
         return
 
-    def transform_local_fluent_data(self, link_H_world_dict, airspeed, air_dens):
+    def import_cell_data(self, data_path, config_name, pitch, yaw):
+        for s_name, s_data in self.surface.items():
+            filename = f"{config_name}-{pitch}-{yaw}-{s_name}.dtbs"
+            filepath = list(data_path.rglob(filename))[0]
+            data = pd.read_csv(filepath, sep="\s+", skiprows=1, header=None)
+            s_data.w_cells = data.values[:, 1:4]
+            s_data.cc_pressure = data.values[:, 4]
+            s_data.cc_friction = data.values[:, 5:8]
+            s_data.cc_face_areas = data.values[:, 9:12]
+        return
+
+    def transform_local_data(self, link_H_world_dict, airspeed, air_dens):
         for s_name, s_data in self.surface.items():
             link_H_world = link_H_world_dict[s_name]
             # transform the data from world to reference link frame
             s_data.l_nodes = self.transform_points(link_H_world, s_data.w_nodes)
+            s_data.l_cells = self.transform_points(link_H_world, s_data.w_cells)
             # Transform variables to coefficients
             dyn_press = 0.5 * air_dens * airspeed**2
             s_data.press_coeff = s_data.pressure / dyn_press
-            s_data.w_fric_coeff = s_data.w_shear_stress / dyn_press
+            s_data.fric_coeff = s_data.friction / dyn_press
         return
 
     def transform_points(self, frame_1_H_frame_2, points):
@@ -82,22 +93,25 @@ class FlowImporter:
     def reorder_surface_data(self):
         for s_name, s_data in self.surface.items():
             # Reorder w_nodes to match mesh_nodes order
-            node_indices = []
+            indices = []
             for node in s_data.mesh_nodes:
                 distances = np.linalg.norm(s_data.l_nodes - node, axis=1)
-                node_indices.append(np.argmin(distances))
-            s_data.l_nodes = s_data.l_nodes[node_indices]
-            s_data.w_nodes = s_data.w_nodes[node_indices]
-            s_data.pressure = s_data.pressure[node_indices]
-            s_data.press_coeff = s_data.press_coeff[node_indices]
-            s_data.w_shear_stress = s_data.w_shear_stress[node_indices]
-            s_data.w_fric_coeff = s_data.w_fric_coeff[node_indices]
+                indices.append(np.argmin(distances))
+            s_data.l_nodes = s_data.l_nodes[indices]
+            s_data.w_nodes = s_data.w_nodes[indices]
+            s_data.pressure = s_data.pressure[indices]
+            s_data.press_coeff = s_data.press_coeff[indices]
+            s_data.friction = s_data.friction[indices]
+            s_data.fric_coeff = s_data.fric_coeff[indices]
 
     def assign_global_fluent_data(self):
-        for _, s_data in self.surface.items():
+        self.w_nodes = np.empty(shape=(0, 3))
+        self.cp = np.empty(shape=(0,))
+        self.cf = np.empty(shape=(0, 3))
+        for s_data in self.surface.values():
             self.w_nodes = np.append(self.w_nodes, s_data.w_nodes, axis=0)
             self.cp = np.append(self.cp, s_data.press_coeff)
-            self.cf = np.append(self.cf, s_data.w_fric_coeff, axis=0)
+            self.cf = np.append(self.cf, s_data.fric_coeff, axis=0)
         return
 
     def interp_3d_to_image(
@@ -106,10 +120,10 @@ class FlowImporter:
     ):
         im_res = image_resolution_list[0].astype(int)
         self.image = np.empty(shape=(0, im_res[0], im_res[1]))
-        for s_name, s_data in self.surface.items():
+        for s_data in self.surface.values():
             # Create a meshgrid for interpolation over the (theta,psi) domain
-            x_image = np.linspace(0, np.pi, int(im_res[1]))
-            y_image = np.linspace(-np.pi, np.pi, int(im_res[0]))
+            x_image = np.linspace(0, np.pi, im_res[1])  # psi
+            y_image = np.linspace(-np.pi, np.pi, im_res[0])  # theta
             X, Y = np.meshgrid(x_image, y_image)
             # Interpolate the pressure coefficient data
             query_points = np.vstack((Y.ravel(), X.ravel())).T
@@ -120,13 +134,13 @@ class FlowImporter:
 
             interp_press_coeff = interp(query_points).reshape(X.shape)
 
-            interp.values = s_data.w_fric_coeff[:, 0].ravel().reshape(-1, 1)
+            interp.values = s_data.fric_coeff[:, 0].ravel().reshape(-1, 1)
             interp_x_fric_coeff = interp(query_points).reshape(X.shape)
 
-            interp.values = s_data.w_fric_coeff[:, 1].ravel().reshape(-1, 1)
+            interp.values = s_data.fric_coeff[:, 1].ravel().reshape(-1, 1)
             interp_y_fric_coeff = interp(query_points).reshape(X.shape)
 
-            interp.values = s_data.w_fric_coeff[:, 2].ravel().reshape(-1, 1)
+            interp.values = s_data.fric_coeff[:, 2].ravel().reshape(-1, 1)
             interp_z_fric_coeff = interp(query_points).reshape(X.shape)
 
             # Extrapolate the data using nearest neighbors
@@ -140,17 +154,17 @@ class FlowImporter:
                     out_ids
                 ]
 
-                extrap.values = s_data.w_fric_coeff[:, 0].ravel().reshape(-1, 1)
+                extrap.values = s_data.fric_coeff[:, 0].ravel().reshape(-1, 1)
                 interp_x_fric_coeff[out_ids] = extrap(query_points).reshape(X.shape)[
                     out_ids
                 ]
 
-                extrap.values = s_data.w_fric_coeff[:, 1].ravel().reshape(-1, 1)
+                extrap.values = s_data.fric_coeff[:, 1].ravel().reshape(-1, 1)
                 interp_y_fric_coeff[out_ids] = extrap(query_points).reshape(X.shape)[
                     out_ids
                 ]
 
-                extrap.values = s_data.w_fric_coeff[:, 2].ravel().reshape(-1, 1)
+                extrap.values = s_data.fric_coeff[:, 2].ravel().reshape(-1, 1)
                 interp_z_fric_coeff[out_ids] = extrap(query_points).reshape(X.shape)[
                     out_ids
                 ]
@@ -167,185 +181,121 @@ class FlowImporter:
             self.image = np.concatenate((self.image, s_data.image), axis=0)
         return
 
-    def compute_forces(self, air_density, flow_velocity):
-        dyn_pressure = 0.5 * air_density * flow_velocity**2
-        for surface in self.surface.values():
-            pressure = surface.pressure_coefficient * dyn_pressure
-            shear_x = surface.x_friction_coefficient * dyn_pressure
-            shear_y = surface.y_friction_coefficient * dyn_pressure
-            shear_z = surface.z_friction_coefficient * dyn_pressure
-            areas = np.sqrt(
-                surface.x_area_global**2
-                + surface.y_area_global**2
-                + surface.z_area_global**2
+    def reorder_cell_data(self):
+        for s_data in self.surface.values():
+            indices = []
+            for face in s_data.mesh_faces:
+                node_center = np.mean(s_data.mesh_nodes[face], axis=0)
+                distances = np.linalg.norm(s_data.l_cells - node_center, axis=1)
+                indices.append(np.argmin(distances))
+            s_data.cc_face_areas = s_data.cc_face_areas[indices]
+        return
+
+    def compute_cell_values(self):
+        self.reorder_cell_data()
+        for s_data in self.surface.values():
+            s_data.cc_pressure = np.empty(shape=(0,))
+            s_data.cc_friction = np.empty(shape=(0, 3))
+            for face in s_data.mesh_faces:
+                pressure = np.mean(s_data.pressure[face])
+                friction = np.mean(s_data.friction[face], axis=0)
+                s_data.cc_pressure = np.append(s_data.cc_pressure, pressure)
+                s_data.cc_friction = np.vstack((s_data.cc_friction, friction))
+        return
+
+    def compute_cell_forces(self):
+        w_aero_force = np.empty(shape=(0, 3))
+        for s_data in self.surface.values():
+            areas = np.linalg.norm(s_data.cc_face_areas, axis=1)
+            d_force = (
+                s_data.cc_pressure[:, np.newaxis] * s_data.cc_face_areas
+                + s_data.cc_friction * areas[:, np.newaxis]
             )
-            d_force_x = pressure * surface.x_area_global + shear_x * areas
-            d_force_y = pressure * surface.y_area_global + shear_y * areas
-            d_force_z = pressure * surface.z_area_global + shear_z * areas
-            surface.global_force = np.array(
-                [
-                    np.sum(d_force_x),
-                    np.sum(d_force_y),
-                    np.sum(d_force_z),
-                ]
-            )
+            s_data.w_aero_force = np.sum(d_force, axis=0)
+            w_aero_force = np.vstack((w_aero_force, s_data.w_aero_force))
+        self.w_aero_force = np.sum(w_aero_force, axis=0)
         return
 
 
 class FlowGenerator:
-    def __init__(self, surface_list, image_resolution_list) -> None:
-        self.x = np.empty(shape=(0,))
-        self.y = np.empty(shape=(0,))
-        self.z = np.empty(shape=(0,))
-        self.cp = np.empty(shape=(0,))
-        self.fx = np.empty(shape=(0,))
-        self.fy = np.empty(shape=(0,))
-        self.fz = np.empty(shape=(0,))
+    def __init__(self):
         self.surface = {}
-        for surf_idx, surf_name in enumerate(surface_list):
-            self.surface[surf_name] = SurfaceData()
-            img_res = (image_resolution_list[surf_idx]).astype(int)
-            self.surface[surf_name].image = np.zeros(shape=(4, img_res[0], img_res[1]))
+
+    def import_mesh_mapping_data(self, data, surface_list, link_H_world_dict):
+        for s_name in surface_list:
+            self.surface[s_name] = SurfaceData()
+        for s_name, s_data in self.surface.items():
+            s_data.map = data[s_name]["map"]
+            s_data.mesh_faces = data[s_name]["faces"]
+            w_mesh_nodes = data[s_name]["nodes"] / 1000
+            link_H_world = link_H_world_dict[s_name]
+            # mesh nodes are stored in local reference frame
+            s_data.mesh_nodes = self.transform_points(link_H_world, w_mesh_nodes)
         return
 
-    def separate_images(self, image, surface_list):
-        for surface_index, surface_name in enumerate(surface_list):
-            self.surface[surface_name].image = image[
-                4 * surface_index : 4 * (surface_index + 1), :, :
-            ]
-        return
-
-    def load_mesh_points(
+    def load_mesh_cells(
         self,
         fluent_data_path,
-        surface_list,
-        link_H_world_ref_dict,
-        reference_joint_config_name="hovering",
-        reference_pitch_angle=0,
-        reference_yaw_angle=0,
+        link_H_world_ref,
+        ref_config_name="hovering",
+        ref_pitch=0,
+        ref_yaw=0,
     ):
-        for surface_name in surface_list:
+        for s_name, s_data in self.surface.items():
             database_file_path = list(
                 fluent_data_path.rglob(
-                    f"mesh-{reference_joint_config_name}-{reference_pitch_angle}-{reference_yaw_angle}-{surface_name}.dtbs"
+                    f"{ref_config_name}-{ref_pitch}-{ref_yaw}-{s_name}.dtbs"
                 )
             )[0]
             data = np.loadtxt(database_file_path, skiprows=1)
-            x_global = data[:, 1]
-            y_global = data[:, 2]
-            z_global = data[:, 3]
-            x_area_global = data[:, 4]
-            y_area_global = data[:, 5]
-            z_area_global = data[:, 6]
+            w_cells = data[:, 1:4]
+            w_area = data[:, 9:12]
             # transform the data from world to reference link frame
-            (
-                self.surface[surface_name].x_local,
-                self.surface[surface_name].y_local,
-                self.surface[surface_name].z_local,
-            ) = self.transform_points(
-                link_H_world_ref_dict[surface_name], x_global, y_global, z_global
-            )
-            (
-                self.surface[surface_name].x_area_local,
-                self.surface[surface_name].y_area_local,
-                self.surface[surface_name].z_area_local,
-            ) = self.rotate_vectors(
-                link_H_world_ref_dict[surface_name],
-                x_area_global,
-                y_area_global,
-                z_area_global,
-            )
+            s_data.l_cells = self.transform_points(link_H_world_ref[s_name], w_cells)
+            s_data.l_areas = self.rotate_vectors(link_H_world_ref[s_name], w_area)
         return
 
-    def transform_points(self, frame_1_H_frame_2, x, y, z):
-        ones = np.ones((len(x),))
-        starting_coordinates = np.vstack((x, y, z, ones)).T
-        ending_coordinates = np.dot(frame_1_H_frame_2, starting_coordinates.T).T
-        return (
-            ending_coordinates[:, 0],
-            ending_coordinates[:, 1],
-            ending_coordinates[:, 2],
-        )
-
-    def rotate_vectors(self, frame_1_H_frame_2, x, y, z):
-        starting_components = np.vstack((x, y, z)).T
-        ending_components = np.dot(frame_1_H_frame_2[:3, :3], starting_components.T).T
-        return (
-            ending_components[:, 0],
-            ending_components[:, 1],
-            ending_components[:, 2],
-        )
-
-    def transform_mesh_points(
-        self,
-        surface_list,
-        world_H_link_dict,
-    ):
-        self.x = np.empty(shape=(0,))
-        self.y = np.empty(shape=(0,))
-        self.z = np.empty(shape=(0,))
-        for surface_name in surface_list:
-            # compute the transformation from the link frame to the current world frame
-            (
-                self.surface[surface_name].x_global,
-                self.surface[surface_name].y_global,
-                self.surface[surface_name].z_global,
-            ) = self.transform_points(
-                world_H_link_dict[surface_name],
-                self.surface[surface_name].x_local,
-                self.surface[surface_name].y_local,
-                self.surface[surface_name].z_local,
-            )
-            (
-                self.surface[surface_name].x_area_global,
-                self.surface[surface_name].y_area_global,
-                self.surface[surface_name].z_area_global,
-            ) = self.rotate_vectors(
-                world_H_link_dict[surface_name],
-                self.surface[surface_name].x_area_local,
-                self.surface[surface_name].y_area_local,
-                self.surface[surface_name].z_area_local,
-            )
-            # assign global coordinates
-            self.x = np.append(self.x, self.surface[surface_name].x_global)
-            self.y = np.append(self.y, self.surface[surface_name].y_global)
-            self.z = np.append(self.z, self.surface[surface_name].z_global)
+    def reorder_cell_data(self):
+        for s_data in self.surface.values():
+            indices = []
+            for face in s_data.mesh_faces:
+                node_center = np.mean(s_data.mesh_nodes[face], axis=0)
+                distances = np.linalg.norm(s_data.l_cells - node_center, axis=1)
+                indices.append(np.argmin(distances))
+            s_data.l_cells = s_data.l_cells[indices]
+            s_data.l_areas = s_data.l_areas[indices]
         return
 
-    def compute_interpolator(
-        self,
-        surface_list,
-        main_axes,
-    ):
-        for surface_index, surface_name in enumerate(surface_list):
-            if main_axes[surface_index] == 0:
-                x = self.surface[surface_name].y_local
-                y = self.surface[surface_name].z_local
-                z = self.surface[surface_name].x_local
-            elif main_axes[surface_index] == 1:
-                x = self.surface[surface_name].x_local
-                y = self.surface[surface_name].z_local
-                z = self.surface[surface_name].y_local
-            elif main_axes[surface_index] == 2:
-                x = self.surface[surface_name].x_local
-                y = self.surface[surface_name].y_local
-                z = self.surface[surface_name].z_local
-            # Trasform to cylindrical coordinates
-            r = np.sqrt(x**2 + y**2)
-            r_mean = np.mean(r)
-            theta = np.arctan2(y, x)
-            theta_r = theta * r_mean
+    def transform_mesh_cells(self, world_H_link):
+        self.w_nodes = np.empty(shape=(0, 3))
+        for s_name, s_data in self.surface.items():
+            s_data.w_cells = self.transform_points(world_H_link[s_name], s_data.l_cells)
+            s_data.w_areas = self.rotate_vectors(world_H_link[s_name], s_data.l_areas)
+            w_nodes = self.transform_points(world_H_link[s_name], s_data.l_nodes)
+            s_data.w_nodes = w_nodes
+            self.w_nodes = np.append(self.w_nodes, w_nodes, axis=0)
+        return
+
+    def transform_points(self, frame_1_H_frame_2, points):
+        ones = np.ones((len(points), 1))
+        start_coord = np.hstack((points, ones))
+        end_coord = np.dot(frame_1_H_frame_2, start_coord.T).T
+        return end_coord[:, :3]
+
+    def rotate_vectors(self, frame_1_H_frame_2, vectors):
+        return np.dot(frame_1_H_frame_2[:3, :3], vectors.T).T
+
+    def separate_images(self, image):
+        for idx, s_data in enumerate(self.surface.values()):
+            s_data.image = image[4 * idx : 4 * (idx + 1), :, :]
+        return
+
+    def compute_interpolator(self, image_resolution_list):
+        im_res = image_resolution_list[0].astype(int)
+        for s_data in self.surface.values():
             # Define the image coordinates
-            x_image = np.linspace(
-                np.min(theta_r),
-                np.max(theta_r),
-                self.surface[surface_name].image.shape[2],
-            )
-            y_image = np.linspace(
-                np.min(z),
-                np.max(z),
-                self.surface[surface_name].image.shape[1],
-            )
+            x_image = np.linspace(0, np.pi, im_res[1])  # psi
+            y_image = np.linspace(-np.pi, np.pi, im_res[0])  # theta
             # Create and assign interpolator functions
             interp = RegularGridInterpolator(
                 (y_image, x_image),
@@ -355,67 +305,50 @@ class FlowGenerator:
                 fill_value=None,
             )
             # Assign data
-            self.surface[surface_name].interp = interp
-            self.surface[surface_name].z = z
-            self.surface[surface_name].theta = theta
-            self.surface[surface_name].theta_r = theta_r
+            s_data.interp = interp
         return
 
-    def interpolate_flow_data(self, surface_list):
+    def interpolate_flow_data(self):
         self.cp = np.empty(shape=(0,))
-        self.fx = np.empty(shape=(0,))
-        self.fy = np.empty(shape=(0,))
-        self.fz = np.empty(shape=(0,))
-        for surface_name in surface_list:
-            interp = self.surface[surface_name].interp
-            query_points = np.vstack(
-                (self.surface[surface_name].z, self.surface[surface_name].theta_r)
-            ).T
-            interp.values = self.surface[surface_name].image[0, :, :]
-            self.surface[surface_name].pressure_coefficient = interp(query_points)
-            interp.values = self.surface[surface_name].image[1, :, :]
-            self.surface[surface_name].x_friction_coefficient = interp(query_points)
-            interp.values = self.surface[surface_name].image[2, :, :]
-            self.surface[surface_name].y_friction_coefficient = interp(query_points)
-            interp.values = self.surface[surface_name].image[3, :, :]
-            self.surface[surface_name].z_friction_coefficient = interp(query_points)
-            # Assign data
-            self.cp = np.append(
-                self.cp, self.surface[surface_name].pressure_coefficient
-            )
-            self.fx = np.append(
-                self.fx, self.surface[surface_name].x_friction_coefficient
-            )
-            self.fy = np.append(
-                self.fy, self.surface[surface_name].y_friction_coefficient
-            )
-            self.fz = np.append(
-                self.fz, self.surface[surface_name].z_friction_coefficient
-            )
+        self.cf = np.empty(shape=(0, 3))
+        for s_data in self.surface.values():
+            interp = s_data.interp
+            query_points = s_data.map
+            interp.values = s_data.image[0, :, :]
+            s_data.press_coeff = interp(query_points)
+            interp.values = s_data.image[1, :, :]
+            x_fric_coeff = interp(query_points)
+            interp.values = s_data.image[2, :, :]
+            y_fric_coeff = interp(query_points)
+            interp.values = s_data.image[3, :, :]
+            z_fric_coeff = interp(query_points)
+            s_data.fric_coeff = np.vstack((x_fric_coeff, y_fric_coeff, z_fric_coeff)).T
+            self.cp = np.append(self.cp, s_data.press_coeff)
+            self.cf = np.vstack((self.cf, s_data.fric_coeff))
         return
 
-    def compute_forces(self, air_density, flow_velocity):
-        dyn_pressure = 0.5 * air_density * flow_velocity**2
-        for surface in self.surface.values():
-            pressure = surface.pressure_coefficient * dyn_pressure
-            shear_x = surface.x_friction_coefficient * dyn_pressure
-            shear_y = surface.y_friction_coefficient * dyn_pressure
-            shear_z = surface.z_friction_coefficient * dyn_pressure
-            areas = np.sqrt(
-                surface.x_area_global**2
-                + surface.y_area_global**2
-                + surface.z_area_global**2
-            )
-            d_force_x = pressure * surface.x_area_global + shear_x * areas
-            d_force_y = pressure * surface.y_area_global + shear_y * areas
-            d_force_z = pressure * surface.z_area_global + shear_z * areas
-            surface.global_force = np.array(
-                [
-                    np.sum(d_force_x),
-                    np.sum(d_force_y),
-                    np.sum(d_force_z),
-                ]
-            )
+    def compute_cell_values(self):
+        for s_data in self.surface.values():
+            s_data.cc_press_coeff = np.empty(shape=(0,))
+            s_data.cc_fric_coeff = np.empty(shape=(0, 3))
+            for face in s_data.mesh_faces:
+                press_coeff = np.mean(s_data.press_coeff[face])
+                fric_coeff = np.mean(s_data.fric_coeff[face], axis=0)
+                s_data.cc_press_coeff = np.append(s_data.cc_press_coeff, press_coeff)
+                s_data.cc_fric_coeff = np.vstack((s_data.cc_fric_coeff, fric_coeff))
+        return
+
+    def compute_cell_forces(self, airspeed, air_dens):
+        dyn_pressure = 0.5 * air_dens * airspeed**2
+        w_aero_force = np.empty(shape=(0, 3))
+        for s_data in self.surface.values():
+            pressure = s_data.cc_press_coeff[:, np.newaxis] * dyn_pressure
+            friction = s_data.cc_fric_coeff * dyn_pressure
+            areas = np.linalg.norm(s_data.w_areas, axis=1)[:, np.newaxis]
+            d_force = pressure * s_data.w_areas + friction * areas
+            s_data.w_aero_force = np.sum(d_force, axis=0)
+            w_aero_force = np.vstack((w_aero_force, s_data.w_aero_force))
+        self.w_aero_force = np.sum(w_aero_force, axis=0)
         return
 
 
@@ -480,14 +413,14 @@ class FlowVisualizer:
         mesh_material.shader = "defaultLitTransparency"
         mesh_material.base_color = [0.5, 0.5, 0.5, 0.5]  # RGBA, A is for alpha
         # Assemble the geometries list
-        geometries = [
+        geom = [
             {"name": "point_cloud", "geometry": point_cloud},
             {"name": "world_frame", "geometry": world_frame},
             {"name": "wind_vector", "geometry": wind_vector},
         ]
         for idx, mesh in enumerate(robot_meshes):
             # Add meshes to the geometries list
-            geometries.append(
+            geom.append(
                 {
                     "name": f"mesh_{idx}",
                     "geometry": mesh["mesh"],
@@ -495,7 +428,9 @@ class FlowVisualizer:
                 }
             )
             print(f"Mesh {mesh['name']} added to the scene.")
-        o3d.visualization.draw(geometries, show_skybox=False)
+        o3d.visualization.draw(
+            geom, show_skybox=False, non_blocking_and_return_uid=True
+        )
         return
 
     def plot_surface_contour(self, flow_variable, robot_meshes):

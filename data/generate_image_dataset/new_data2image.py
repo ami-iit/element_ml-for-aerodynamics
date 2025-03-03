@@ -1,6 +1,6 @@
 """
 Author: Antonello Paolino
-Date: 2024-05-15
+Date: 2025-02-20
 Description:    This code uses the iDynTree package to retrieve the robot status,
                 then it generates a 2D representation fo the 3D pressure map on
                 the robot component surfaces
@@ -14,9 +14,6 @@ from pathlib import Path
 from resolve_robotics_uri_py import resolve_robotics_uri
 from src.robot import Robot
 from src.flow_new import FlowImporter, FlowVisualizer
-import time
-
-from sklearn.neighbors import KernelDensity
 
 
 SAVE_IMAGE = False
@@ -25,8 +22,7 @@ SAVE_IMAGE = False
 def main():
     # Initialize robot object
     robot_name = "iRonCub-Mk3"
-    # urdf_path = str(resolve_robotics_uri("package://iRonCub-Mk3/model.urdf"))
-    urdf_path = r"C:\Users\apaolino\code\ironcub-software-ws\src\component_ironcub\models\iRonCub-Mk3\iRonCub\robots\iRonCub-Mk3\model.urdf"
+    urdf_path = str(resolve_robotics_uri("package://iRonCub-Mk3/model.urdf"))
     mesh_robot = Robot(robot_name, urdf_path)
     robot = Robot(robot_name, urdf_path)
 
@@ -34,9 +30,8 @@ def main():
     flow = FlowImporter()
 
     # Get the path to the dataset
-    # data_dir = input("Enter the path to the fluent data directory: ")
-    # data_path = Path(str(data_dir).strip())
-    data_path = Path(r"C:\Users\apaolino\code\datasets\mk3-cfd-aero\node-data")
+    data_dir = input("Enter the path to the fluent data directory: ")
+    data_path = Path(str(data_dir).strip())
     config_file_path = list(data_path.rglob("joint-configurations.csv"))[0]
     joint_configs = np.genfromtxt(config_file_path, delimiter=",", dtype=str)
 
@@ -67,8 +62,8 @@ def main():
     flow.import_mesh_mapping_data(map_data, robot.surface_list, mesh_link_H_world_dict)
 
     # Import fluent data from all surfaces
-    flow.import_raw_fluent_data(data_path, config_name, pitch, yaw)
-    flow.transform_local_fluent_data(link_H_world_dict, airspeed, air_dens)
+    flow.import_node_data(data_path, config_name, pitch, yaw)
+    flow.transform_local_data(link_H_world_dict, airspeed, air_dens)
     flow.reorder_surface_data()
     flow.assign_global_fluent_data()
 

@@ -142,7 +142,7 @@ def redistribute_points(
 
         points = new_points.copy()
         print(
-            f"Iteration progress: {it + 1}/{num_iterations}",
+            f"Redistribution progress: {it + 1}/{num_iterations}",
             end="\r",
             flush=True,
         )
