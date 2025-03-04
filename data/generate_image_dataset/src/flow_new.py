@@ -110,9 +110,8 @@ class FlowImporter:
 
     def interp_3d_to_image(
         self,
-        image_resolution_list,
+        im_res,
     ):
-        im_res = image_resolution_list[0].astype(int)
         self.image = np.empty(shape=(0, im_res[0], im_res[1]))
         for s_data in self.surface.values():
             # Create a meshgrid for interpolation over the (theta,psi) domain
@@ -284,8 +283,7 @@ class FlowGenerator:
             s_data.image = image[4 * idx : 4 * (idx + 1), :, :]
         return
 
-    def compute_interpolator(self, image_resolution_list):
-        im_res = image_resolution_list[0].astype(int)
+    def compute_interpolator(self, im_res):
         for s_data in self.surface.values():
             # Define the image coordinates
             x_image = np.linspace(0, np.pi, im_res[1])  # psi
