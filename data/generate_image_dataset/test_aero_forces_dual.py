@@ -11,10 +11,11 @@ import pickle
 from pathlib import Path
 from resolve_robotics_uri_py import resolve_robotics_uri
 from src.robot import Robot
-from src.flow_new import FlowImporter, FlowGenerator, FlowVisualizer
+from src.dual_flow import FlowImporter, FlowGenerator, FlowVisualizer
 import open3d as o3d
 from matplotlib.pyplot import Normalize
 from matplotlib import cm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.spatial.transform import Rotation as R
 import matplotlib.pyplot as plt
 from tabulate import tabulate
@@ -38,15 +39,12 @@ def main():
     # Get the path to the raw data
     # data_dir = input("Enter the path to the fluent data directory: ")
     # data_path = Path(str(data_dir).strip())
-    node_data_path = Path(r"C:\Users\apaolino\code\datasets\mk3-cfd-aero\node-data")
-    cell_data_path = Path(r"C:\Users\apaolino\code\datasets\mk3-cfd-aero\cell-data")
-    file_names = [
-        file.name for file in node_data_path.rglob("*.dtbs") if file.is_file()
-    ]
+    data_path = Path(r"C:\Users\apaolino\code\datasets\mk3-cfd-aero\cell-data")
+    file_names = [file.name for file in data_path.rglob("*.dtbs") if file.is_file()]
     config_names = sorted(
         list(set([file_name.split("-")[0] for file_name in file_names]))
     )
-    config_file_path = list(node_data_path.rglob("joint-configurations.csv"))[0]
+    config_file_path = list(data_path.rglob("joint-configurations.csv"))[0]
     joint_configs = np.genfromtxt(config_file_path, delimiter=",", dtype=str)
 
     for config_name in config_names:
@@ -55,7 +53,7 @@ def main():
         )
         joint_pos *= np.pi / 180
         # Import and set mesh mapping
-        map_file = list(map_dir.rglob(f"{config_name}-map.npy"))[0]
+        map_file = list(map_dir.rglob(f"{config_name}-dual-map.npy"))[0]
         map_data = np.load(map_file, allow_pickle=True).item()
         mesh_robot.set_state(0, 0, joint_pos)
         mesh_link_H_world_dict = mesh_robot.compute_all_link_H_world()
@@ -65,42 +63,30 @@ def main():
         flow_out.import_mesh_mapping_data(
             map_data, robot.surface_list, mesh_link_H_world_dict
         )
-        flow_out.load_mesh_cells(cell_data_path, mesh_link_H_world_dict)
-        flow_out.reorder_cell_data()
+        flow_out.load_mesh(data_path, mesh_link_H_world_dict)
+        flow_out.reorder_mesh()
         flow_out.compute_interpolator(robot.image_resolutions)
         # Set pitch and yaw angles
         pitch_yaw_angles = find_pitch_yaw_angles(config_name, file_names)
-        aero_force_abs_err = np.empty((0, 3))
-        counter = 0
-        for pitch, yaw in pitch_yaw_angles[0:5]:
-            # pitch = int(pitch)
-            # yaw = int(yaw)
-            pitch = 30
-            yaw = 0
+        aero_force_abs_err = np.zeros((len(pitch_yaw_angles), 3))
+        aero_force_rel_err = np.zeros((len(pitch_yaw_angles), 3))
+        for idx, pitch_yaw in enumerate(pitch_yaw_angles[:2]):
+            pitch = int(pitch_yaw[0])
+            yaw = int(pitch_yaw[1])
             # Set robot state and get link to world transformations
             robot.set_state(pitch, yaw, joint_pos)
             link_H_world = robot.compute_all_link_H_world()
             # Import fluent data from all surfaces
-            flow_in.import_node_data(node_data_path, config_name, pitch, yaw)
-            flow_in.import_cell_data(cell_data_path, config_name, pitch, yaw)
+            flow_in.import_data(data_path, config_name, pitch, yaw)
             flow_in.transform_local_data(link_H_world, airspeed=17.0, air_dens=1.225)
-            flow_in.reorder_surface_data()
-            flow_in.assign_global_fluent_data()
+            flow_in.reorder_data()
+            flow_in.assign_global_data()
             # Data Interpolation and Image Generation
             flow_in.interp_3d_to_image(robot.image_resolutions)
-            flow_in.compute_cell_forces()
+            flow_in.compute_forces()
             # Cell force computation
-            in_tot_aero_force_cell = flow_in.w_aero_force
-            in_aero_forces_cell = np.concatenate(
-                [data.w_aero_force[np.newaxis, :] for data in flow_in.surface.values()],
-                axis=0,
-            )
-
-            # Node force computations
-            flow_in.compute_cell_values()
-            flow_in.compute_cell_forces()
-            in_tot_aero_force_node = flow_in.w_aero_force
-            in_aero_forces_node = np.concatenate(
+            in_tot_aero_force = flow_in.w_aero_force
+            in_aero_forces = np.concatenate(
                 [data.w_aero_force[np.newaxis, :] for data in flow_in.surface.values()],
                 axis=0,
             )
@@ -108,12 +94,11 @@ def main():
             # Data reconstruction
             image = flow_in.image
             world_H_link_dict = robot.compute_all_world_H_link()
-            flow_out.transform_mesh_cells(world_H_link_dict)
+            flow_out.transform_mesh(world_H_link_dict)
             flow_out.separate_images(image)
             flow_out.interpolate_flow_data()
-            flow_out.compute_cell_values()
-            flow_out.compute_cell_forces(airspeed=17.0, air_dens=1.225)
-            out_tot_aero_force_node = flow_out.w_aero_force
+            flow_out.compute_forces(airspeed=17.0, air_dens=1.225)
+            out_tot_aero_force = flow_out.w_aero_force
             out_aero_forces = np.concatenate(
                 [
                     data.w_aero_force[np.newaxis, :]
@@ -124,16 +109,15 @@ def main():
 
             # Generate total aerodynamic force output
             tot_force_out = [
-                ["Input total aero force (cell)"] + in_tot_aero_force_cell.tolist(),
-                ["Input total aero force (node)"] + in_tot_aero_force_node.tolist(),
-                ["Output total aero force (node)"] + out_tot_aero_force_node.tolist(),
+                ["Input total aero force"] + in_tot_aero_force.tolist(),
+                ["Input total aero force"] + in_tot_aero_force.tolist(),
             ]
             headers = ["", "x", "y", "z"]
             print(tabulate(tot_force_out, headers=headers, tablefmt="pretty"))
 
-            # generate local aerodynamic force output on cell level
-            abs_err_cell = np.abs(in_aero_forces_cell - out_aero_forces)
-            rel_err_cell = abs_err_cell / np.abs(in_aero_forces_cell) * 100
+            # generate local aerodynamic force output
+            abs_err_cell = np.abs(in_aero_forces - out_aero_forces)
+            rel_err_cell = abs_err_cell / np.abs(in_aero_forces) * 100
 
             loc_force_out_1 = [
                 [name[8:]] + abs_err_cell[idx].tolist() + rel_err_cell[idx].tolist()
@@ -143,76 +127,47 @@ def main():
             print(f"Local errors (cell)")
             print(tabulate(loc_force_out_1, headers=header, tablefmt="pretty"))
 
-            # generate local aerodynamic force output on node level
-            abs_err_node = np.abs(in_aero_forces_node - out_aero_forces)
-            rel_err_node = abs_err_node / np.abs(in_aero_forces_node) * 100
-
-            loc_force_out_2 = [
-                [name[8:]] + abs_err_node[idx].tolist() + rel_err_node[idx].tolist()
-                for idx, name in enumerate(flow_in.surface.keys())
-            ]
-            header = ["surface", "x", "y", "z", "x_rel", "y_rel", "z_rel"]
-            print(f"Local errors (node)")
-            print(tabulate(loc_force_out_2, headers=header, tablefmt="pretty"))
-
             # plot_2d_pressure_map_errors(flow_in, flow_out)
-            plot_diff_pressure_pointcloud(flow_in, flow_out)
+            # plot_diff_pressure_pointcloud(flow_in, flow_out)
 
-            counter += 1
             print(
-                f"{config_name} configuration progress: {counter}/{pitch_yaw_angles.shape[0]}",
+                f"{config_name} configuration progress: {idx+1}/{pitch_yaw_angles.shape[0]}",
                 end="\r",
                 flush=True,
             )
 
-        plot_scatter_pressure_map_errors(
-            config_name, pitch_yaw_angles, aero_force_abs_err
-        )
+        plot_scatter_force_errors(pitch_yaw_angles, aero_force_abs_err, "absolute")
+        plot_scatter_force_errors(pitch_yaw_angles, aero_force_rel_err, "relative")
+
+        print("check")
 
 
-def plot_scatter_pressure_map_errors(config_name, pitch_yaw_angles, aero_force_abs_err):
-    fig = plt.figure(f"{config_name} total aerodynamic force error")
+def plot_scatter_force_errors(pitch_yaw_angles, aero_force_abs_err, err_type):
+    cbar_label = r"abs error [N]" if err_type == "absolute" else r"rel error [%]"
+    ax_titles = ["x", "y", "z"]
+
+    fig, axes = plt.subplots(1, 3)
     manager = plt.get_current_fig_manager()
     manager.window.showMaximized()
-    ax = fig.add_subplot(131)
-    scatter_plot = ax.scatter(
-        pitch_yaw_angles[:, 0],
-        pitch_yaw_angles[:, 1],
-        c=aero_force_abs_err[:, 0],
-        s=10,
-        cmap="jet",
-    )
-    ax.set_title(f"x force errors")
-    ax.set_ylabel(r"yaw [deg]")
-    ax.set_xlabel(r"pitch [deg]")
-    cbar = fig.colorbar(scatter_plot)
-    cbar.set_label(r"abs error [N]")
-    ax = fig.add_subplot(132)
-    scatter_plot = ax.scatter(
-        pitch_yaw_angles[:, 0],
-        pitch_yaw_angles[:, 1],
-        c=aero_force_abs_err[:, 1],
-        s=10,
-        cmap="jet",
-    )
-    ax.set_title(f"y force errors")
-    ax.set_ylabel(r"yaw [deg]")
-    ax.set_xlabel(r"pitch [deg]")
-    cbar = fig.colorbar(scatter_plot)
-    cbar.set_label(r"abs error [N]")
-    ax = fig.add_subplot(133)
-    scatter_plot = ax.scatter(
-        pitch_yaw_angles[:, 0],
-        pitch_yaw_angles[:, 1],
-        c=aero_force_abs_err[:, 2],
-        s=10,
-        cmap="jet",
-    )
-    ax.set_title(f"z force errors")
-    ax.set_ylabel(r"yaw [deg]")
-    ax.set_xlabel(r"pitch [deg]")
-    cbar = fig.colorbar(scatter_plot)
-    cbar.set_label(r"abs error [N]")
+
+    for i in range(len(axes)):
+        ax = axes[i]
+        scatter_plot = ax.scatter(
+            pitch_yaw_angles[:, 0],
+            pitch_yaw_angles[:, 1],
+            c=aero_force_abs_err[:, i],
+            s=20,
+            cmap="jet",
+        )
+        ax.set_title(f"{ax_titles[i]} force errors")
+        ax.set_ylabel(r"yaw [deg]") if i == 0 else None
+        ax.set_xlabel(r"pitch [deg]")
+        divider = make_axes_locatable(ax)
+        cax = divider.new_vertical(size="5%", pad=0.6, pack_start=True)
+        fig.add_axes(cax)
+        cbar = fig.colorbar(scatter_plot, cax=cax, orientation="horizontal")
+        cbar.set_label(cbar_label)
+
     plt.show()
 
 
