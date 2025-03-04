@@ -24,8 +24,7 @@ from tabulate import tabulate
 def main():
     # Initialize robot object
     robot_name = "iRonCub-Mk3"
-    # urdf_path = str(resolve_robotics_uri("package://iRonCub-Mk3/model.urdf"))
-    urdf_path = r"C:\Users\apaolino\code\ironcub-software-ws\src\component_ironcub\models\iRonCub-Mk3\iRonCub\robots\iRonCub-Mk3\model.urdf"
+    urdf_path = str(resolve_robotics_uri("package://iRonCub-Mk3/model.urdf"))
     mesh_robot = Robot(robot_name, urdf_path)
     robot = Robot(robot_name, urdf_path)
     # Initialize flow object
@@ -37,10 +36,10 @@ def main():
     # Define map directory
     map_dir = Path(__file__).parents[0] / "maps"
     # Get the path to the raw data
-    # data_dir = input("Enter the path to the fluent data directory: ")
-    # data_path = Path(str(data_dir).strip())
-    node_data_path = Path(r"C:\Users\apaolino\code\datasets\mk3-cfd-aero\node-data")
-    cell_data_path = Path(r"C:\Users\apaolino\code\datasets\mk3-cfd-aero\cell-data")
+    node_data_dir = input("Enter the path to the fluent node data directory: ")
+    node_data_path = Path(str(node_data_dir).strip())
+    cell_data_dir = input("Enter the path to the fluent cell data directory: ")
+    cell_data_path = Path(str(cell_data_dir).strip())
     file_names = [
         file.name for file in node_data_path.rglob("*.dtbs") if file.is_file()
     ]
@@ -68,12 +67,12 @@ def main():
         )
         flow_out.load_mesh_cells(cell_data_path, mesh_link_H_world_dict)
         flow_out.reorder_cell_data()
-        flow_out.compute_interpolator(robot.image_resolutions)
+        flow_out.compute_interpolator(robot.image_resolution)
         # Set pitch and yaw angles
         pitch_yaw_angles = find_pitch_yaw_angles(config_name, file_names)
         aero_force_abs_err = np.zeros((len(pitch_yaw_angles), 3))
         aero_force_rel_err = np.zeros((len(pitch_yaw_angles), 3))
-        for idx, pitch_yaw in enumerate(pitch_yaw_angles[:2]):
+        for idx, pitch_yaw in enumerate(pitch_yaw_angles):
             pitch = int(pitch_yaw[0])
             yaw = int(pitch_yaw[1])
             # Set robot state and get link to world transformations
@@ -86,7 +85,7 @@ def main():
             flow_in.reorder_surface_data()
             flow_in.assign_global_fluent_data()
             # Data Interpolation and Image Generation
-            flow_in.interp_3d_to_image(robot.image_resolutions)
+            flow_in.interp_3d_to_image(robot.image_resolution)
             flow_in.compute_cell_forces()
             # Cell force computation
             in_tot_aero_force_cell = flow_in.w_aero_force

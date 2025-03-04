@@ -24,8 +24,7 @@ from tabulate import tabulate
 def main():
     # Initialize robot object
     robot_name = "iRonCub-Mk3"
-    # urdf_path = str(resolve_robotics_uri("package://iRonCub-Mk3/model.urdf"))
-    urdf_path = r"C:\Users\apaolino\code\ironcub-software-ws\src\component_ironcub\models\iRonCub-Mk3\iRonCub\robots\iRonCub-Mk3\model.urdf"
+    urdf_path = str(resolve_robotics_uri("package://iRonCub-Mk3/model.urdf"))
     mesh_robot = Robot(robot_name, urdf_path)
     robot = Robot(robot_name, urdf_path)
     # Initialize flow object
@@ -37,9 +36,8 @@ def main():
     # Define map directory
     map_dir = Path(__file__).parents[0] / "maps"
     # Get the path to the raw data
-    # data_dir = input("Enter the path to the fluent data directory: ")
-    # data_path = Path(str(data_dir).strip())
-    data_path = Path(r"C:\Users\apaolino\code\datasets\mk3-cfd-aero\cell-data")
+    data_dir = input("Enter the path to the fluent data directory: ")
+    data_path = Path(str(data_dir).strip())
     file_names = [file.name for file in data_path.rglob("*.dtbs") if file.is_file()]
     config_names = sorted(
         list(set([file_name.split("-")[0] for file_name in file_names]))
@@ -65,11 +63,11 @@ def main():
         )
         flow_out.load_mesh(data_path, mesh_link_H_world_dict)
         flow_out.reorder_mesh()
-        flow_out.compute_interpolator(robot.image_resolutions)
+        flow_out.compute_interpolator(robot.image_resolution)
         # Set pitch and yaw angles
         pitch_yaw_angles = find_pitch_yaw_angles(config_name, file_names)
-        aero_force_abs_err = np.zeros((len(pitch_yaw_angles), 3))
-        aero_force_rel_err = np.zeros((len(pitch_yaw_angles), 3))
+        abs_err = np.zeros((len(pitch_yaw_angles), 3))
+        rel_err = np.zeros((len(pitch_yaw_angles), 3))
         for idx, pitch_yaw in enumerate(pitch_yaw_angles[:2]):
             pitch = int(pitch_yaw[0])
             yaw = int(pitch_yaw[1])
@@ -78,14 +76,14 @@ def main():
             link_H_world = robot.compute_all_link_H_world()
             # Import fluent data from all surfaces
             flow_in.import_data(data_path, config_name, pitch, yaw)
-            flow_in.transform_local_data(link_H_world, airspeed=17.0, air_dens=1.225)
+            flow_in.transform_data(link_H_world, airspeed=17.0, air_dens=1.225)
             flow_in.reorder_data()
             flow_in.assign_global_data()
             # Data Interpolation and Image Generation
-            flow_in.interp_3d_to_image(robot.image_resolutions)
+            flow_in.interp_3d_to_image(robot.image_resolution)
             flow_in.compute_forces()
             # Cell force computation
-            in_tot_aero_force = flow_in.w_aero_force
+            in_aero_force = flow_in.w_aero_force
             in_aero_forces = np.concatenate(
                 [data.w_aero_force[np.newaxis, :] for data in flow_in.surface.values()],
                 axis=0,
@@ -98,7 +96,7 @@ def main():
             flow_out.separate_images(image)
             flow_out.interpolate_flow_data()
             flow_out.compute_forces(airspeed=17.0, air_dens=1.225)
-            out_tot_aero_force = flow_out.w_aero_force
+            out_aero_force = flow_out.w_aero_force
             out_aero_forces = np.concatenate(
                 [
                     data.w_aero_force[np.newaxis, :]
@@ -108,19 +106,21 @@ def main():
             )
 
             # Generate total aerodynamic force output
+            abs_err[idx] = np.abs(in_aero_force - out_aero_force)
+            rel_err[idx] = abs_err[idx] / np.abs(in_aero_force) * 100
             tot_force_out = [
-                ["Input total aero force"] + in_tot_aero_force.tolist(),
-                ["Input total aero force"] + in_tot_aero_force.tolist(),
+                ["CFD"] + in_aero_force.tolist() + 3 * ["-"],
+                ["Reconstruction"] + out_aero_force.tolist() + rel_err[idx].tolist(),
             ]
-            headers = ["", "x", "y", "z"]
+            headers = ["", "x", "y", "z", "x_rel", "y_rel", "z_rel"]
             print(tabulate(tot_force_out, headers=headers, tablefmt="pretty"))
 
             # generate local aerodynamic force output
-            abs_err_cell = np.abs(in_aero_forces - out_aero_forces)
-            rel_err_cell = abs_err_cell / np.abs(in_aero_forces) * 100
+            abs_errs = np.abs(in_aero_forces - out_aero_forces)
+            rel_errs = abs_errs / np.abs(in_aero_forces) * 100
 
             loc_force_out_1 = [
-                [name[8:]] + abs_err_cell[idx].tolist() + rel_err_cell[idx].tolist()
+                [name[8:]] + abs_errs[idx].tolist() + rel_errs[idx].tolist()
                 for idx, name in enumerate(flow_in.surface.keys())
             ]
             header = ["surface", "x", "y", "z", "x_rel", "y_rel", "z_rel"]
@@ -136,8 +136,8 @@ def main():
                 flush=True,
             )
 
-        plot_scatter_force_errors(pitch_yaw_angles, aero_force_abs_err, "absolute")
-        plot_scatter_force_errors(pitch_yaw_angles, aero_force_rel_err, "relative")
+        plot_scatter_force_errors(pitch_yaw_angles, abs_err, "absolute")
+        plot_scatter_force_errors(pitch_yaw_angles, rel_err, "relative")
 
         print("check")
 
