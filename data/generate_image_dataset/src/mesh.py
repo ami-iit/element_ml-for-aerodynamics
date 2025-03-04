@@ -6,6 +6,49 @@ from sklearn.decomposition import PCA
 from scipy.spatial import Delaunay
 
 
+def build_dual_mesh(nodes, faces, cells):
+    """Builds a dual mesh from the given mesh and cell data."""
+    # Reorder cells according to faces
+    cells *= 1000
+    indices = []
+    for face in faces:
+        face_center = np.mean(nodes[face], axis=0)
+        distances = np.linalg.norm(cells - face_center, axis=1)
+        indices.append(np.argmin(distances))
+    cells = cells[indices]
+    # Get boundary edges
+    edge_count = {}
+    for face in faces:
+        for i in range(len(face)):
+            edge = tuple(sorted([face[i], face[(i + 1) % len(face)]]))
+            edge_count[edge] = edge_count.get(edge, 0) + 1
+    boundary_edges = [list(edge) for edge, count in edge_count.items() if count == 1]
+    boundary_nodes = list(np.unique(boundary_edges))
+    # Create dual mesh faces
+    dual_faces = []
+    for node in range(len(nodes)):
+        caos_face = []
+        if node not in boundary_nodes:
+            for idx, face in enumerate(faces):
+                if node in face:
+                    caos_face.append(idx)
+            dual_face = [caos_face.pop(0)]
+            while caos_face:
+                # if len(caos_face) == 1:
+                #     dual_face.append(caos_face.pop(0))
+                #     break
+                node_idx = faces[dual_face[-1]].index(node)
+                neighbor_node = faces[dual_face[-1]][
+                    (node_idx - 1) % len(faces[dual_face[-1]])
+                ]
+                for idx, face in enumerate(caos_face):
+                    if neighbor_node in faces[face]:
+                        dual_face.append(caos_face.pop(idx))
+            dual_faces.append(dual_face)
+        print(f"Dual node generation: {node+1}/{len(nodes)}", end="\r", flush=True)
+    return cells, dual_faces
+
+
 def create_mesh_from_faces(points, faces):
     """Creates a mesh using given points and face connectivity, supporting up to 8 vertices per face."""
     # Convert all faces into triangles
@@ -46,6 +89,77 @@ def triangulate_face(face, points):
 def get_boundary_edges(mesh):
     """Get the boundary edges (edges that belong to only one triangle)."""
     triangles = np.asarray(mesh.triangles)
+    nodes = np.asarray(mesh.vertices)
+    edge_count = {}
+    for triangle in triangles:
+        for i in range(3):
+            edge = tuple(sorted([triangle[i], triangle[(i + 1) % 3]]))
+            edge_count[edge] = edge_count.get(edge, 0) + 1
+    boundary_edges = [edge for edge, count in edge_count.items() if count == 1]
+    bd_edges = np.array(boundary_edges)
+    bd_nodes = list(np.unique(bd_edges))
+    tri_list = [list(triangle) for triangle in triangles]
+    support_tris = []
+    for node in bd_nodes:
+        edges = list(bd_edges[np.where(bd_edges == node)[0]])
+        if len(edges) <= 2:
+            continue
+        # get adjacent nodes
+        adj_nodes = []
+        for edge in edges:
+            adj_nodes.append(edge[0] if edge[0] != node else edge[1])
+        sorted_nodes = [adj_nodes.pop(0)]
+        while adj_nodes:
+            v = np.array(nodes[sorted_nodes[-1]]) - np.array(nodes[node])
+            min_angle = 100 * np.pi
+            min_idx = -1
+            for idx, adj_node in enumerate(adj_nodes):
+                v2 = np.array(nodes[adj_node]) - np.array(nodes[node])
+                angle = np.arccos(
+                    np.dot(v, v2) / (np.linalg.norm(v) * np.linalg.norm(v2))
+                )
+                angle2 = np.arcsin(
+                    np.linalg.norm(np.cross(v, v2))
+                    / (np.linalg.norm(v) * np.linalg.norm(v2))
+                )
+                if angle < min_angle and angle2 > 0:
+                    min_angle = angle
+                    min_idx = idx
+            sorted_nodes.append(adj_nodes.pop(min_idx))
+        # Create support triangles
+        for i in range(len(sorted_nodes)):
+            node_1 = sorted_nodes[i]
+            node_2 = sorted_nodes[(i + 1) % len(sorted_nodes)]
+            support_tri = [node, node_1, node_2]
+            # Check support triangles
+            vector = np.array(nodes[node_1]) - np.array(nodes[node_2])
+            is_valid = True
+            adj_edges_1 = [edge for edge in edge_count.keys() if node_1 in edge]
+            adj_edges_2 = [edge for edge in edge_count.keys() if node_2 in edge]
+            for edge in adj_edges_1:
+                other_node = edge[0] if edge[0] != node_1 else edge[1]
+                vector2 = np.array(nodes[node_1]) - np.array(nodes[other_node])
+                dot_prod = np.dot(vector, vector2) / (
+                    np.linalg.norm(vector) * np.linalg.norm(vector2)
+                )
+                if dot_prod > 0.99:
+                    is_valid = False
+                    break
+            for edge in adj_edges_2:
+                other_node = edge[0] if edge[0] != node_2 else edge[1]
+                vector2 = np.array(nodes[other_node]) - np.array(nodes[node_2])
+                dot_prod = np.dot(vector, vector2) / (
+                    np.linalg.norm(vector) * np.linalg.norm(vector2)
+                )
+                if dot_prod > 0.99:
+                    is_valid = False
+                    break
+            if is_valid:
+                support_tris.append(support_tri)
+                tri_list.append(support_tri)
+    # Update triangles and mesh and recompute boundary edges
+    triangles = np.array(tri_list)
+    mesh.triangles = o3d.utility.Vector3iVector(triangles)
     edge_count = {}
     for triangle in triangles:
         for i in range(3):
@@ -230,7 +344,7 @@ def generate_2d_unif_distribution(poly, density):
     path = Path2D(poly)
     for point in points:
         distances = np.linalg.norm(poly - point, axis=1)
-        if not path.contains_point(point) or np.any(distances < 0.6 * density):
+        if not path.contains_point(point) or np.any(distances < 0.8 * density):
             points = np.delete(
                 points, np.where(np.all(points == point, axis=1))[0], axis=0
             )
