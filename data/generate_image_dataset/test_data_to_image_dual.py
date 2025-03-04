@@ -13,7 +13,7 @@ from matplotlib import gridspec
 from pathlib import Path
 from resolve_robotics_uri_py import resolve_robotics_uri
 from src.robot import Robot
-from src.flow_new import FlowImporter, FlowVisualizer
+from src.dual_flow import FlowImporter, FlowVisualizer
 
 
 SAVE_IMAGE = False
@@ -30,7 +30,7 @@ def main():
     flow = FlowImporter()
 
     # Get the path to the dataset
-    data_dir = input("Enter the path to the fluent data directory: ")
+    data_dir = input("Enter the path to the fluent cell data directory: ")
     data_path = Path(str(data_dir).strip())
     config_file_path = list(data_path.rglob("joint-configurations.csv"))[0]
     joint_configs = np.genfromtxt(config_file_path, delimiter=",", dtype=str)
@@ -57,18 +57,18 @@ def main():
     mesh_link_H_world_dict = mesh_robot.compute_all_link_H_world()
 
     # Import mesh mapping data
-    map_file = list(map_dir.rglob(f"{config_name}-map.npy"))[0]
+    map_file = list(map_dir.rglob(f"{config_name}-dual-map.npy"))[0]
     map_data = np.load(map_file, allow_pickle=True).item()
     flow.import_mesh_mapping_data(map_data, robot.surface_list, mesh_link_H_world_dict)
 
     # Import fluent data from all surfaces
-    flow.import_node_data(data_path, config_name, pitch, yaw)
-    flow.transform_local_data(link_H_world_dict, airspeed, air_dens)
-    flow.reorder_surface_data()
-    flow.assign_global_fluent_data()
+    flow.import_data(data_path, config_name, pitch, yaw)
+    flow.transform_data(link_H_world_dict, airspeed, air_dens)
+    flow.reorder_data()
+    flow.assign_global_data()
 
     # Interpolate and generate images
-    flow.interp_3d_to_image(robot.image_resolutions)
+    flow.interp_3d_to_image(robot.image_resolution)
 
     if SAVE_IMAGE:
         print("Saving assembled image ...")
