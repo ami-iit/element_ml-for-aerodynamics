@@ -54,10 +54,19 @@ def main():
         pitch_yaw_angles = find_pitch_yaw_angles(config_name, file_names)
         pitch_angles = []
         yaw_angles = []
-        counter = 0
-        for pitch, yaw in pitch_yaw_angles:
-            pitch = int(pitch)
-            yaw = int(yaw)
+        # Initialize database structure of dimensions (N_images, N_channels, X, Y) and store data
+        database = np.empty(
+            shape=(
+                len(pitch_yaw_angles),
+                len(robot.surface_list),
+                robot.image_resolution[0],
+                robot.image_resolution[1],
+            ),
+            dtype=np.float16,
+        )
+        for idx, (pitch_yaw) in enumerate(pitch_yaw_angles):
+            pitch = int(pitch_yaw[0])
+            yaw = int(pitch_yaw[1])
             # Set robot state and get link to world transformations
             robot.set_state(pitch, yaw, joint_pos)
             link_H_world_dict = robot.compute_all_link_H_world()
@@ -67,24 +76,12 @@ def main():
             flow.reorder_surface_data()
             flow.assign_global_fluent_data()
             # Data Interpolation and Image Generation
-            flow.interp_3d_to_image(robot.image_resolutions)
-            # Initialize database structure of dimensions (N_images, N_channels, X, Y) and store data
-            if counter == 0:
-                database = np.empty(
-                    shape=(
-                        len(pitch_yaw_angles),
-                        flow.image.shape[0],
-                        flow.image.shape[1],
-                        flow.image.shape[2],
-                    ),
-                    dtype=np.float16,
-                )
-            database[counter, :, :, :] = flow.image
+            flow.interp_3d_to_image(robot.image_resolution)
+            database[idx, :, :, :] = flow.image
             pitch_angles.append(pitch)
             yaw_angles.append(yaw)
-            counter += 1
             print(
-                f"{config_name} configuration progress: {counter}/{pitch_yaw_angles.shape[0]}",
+                f"{config_name} configuration progress: {idx}/{pitch_yaw_angles.shape[0]}",
                 end="\r",
                 flush=True,
             )
@@ -95,9 +92,9 @@ def main():
             "database": np.array(database).astype(np.float16),
         }
         # Save compressed dataset using compressed numpy
-        with open(str(dataset_dir / f"ironcub-{config_name}.npz"), "wb") as f:
+        with open(str(dataset_dir / f"ironcub-{config_name}-nodal.npz"), "wb") as f:
             pickle.dump(dataset[config_name], f, protocol=4)
-        print(f"Dataset for {config_name} configuration saved.")
+        print(f"Nodal image dataset for {config_name} configuration saved.")
 
 
 def find_pitch_yaw_angles(joint_config_name, file_names):
