@@ -43,8 +43,7 @@ class FlowImporter:
             s_data.mesh_nodes = self.transform_points(link_H_world, w_mesh_nodes)
         return
 
-    def import_node_data(self, data_path, config_name, pitch, yaw):
-        self.w_nodes = np.empty(shape=(0, 3))
+    def import_data(self, data_path, config_name, pitch, yaw):
         for s_name, s_data in self.surface.items():
             filename = f"{config_name}-{pitch}-{yaw}-{s_name}.dtbs"
             filepath = list(data_path.rglob(filename))[0]
@@ -52,18 +51,7 @@ class FlowImporter:
             s_data.w_nodes = data.values[:, 1:4]
             s_data.pressure = data.values[:, 4]
             s_data.friction = data.values[:, 5:8]
-            self.w_nodes = np.append(self.w_nodes, s_data.w_nodes, axis=0)
-        return
-
-    def import_cell_data(self, data_path, config_name, pitch, yaw):
-        for s_name, s_data in self.surface.items():
-            filename = f"{config_name}-{pitch}-{yaw}-{s_name}.dtbs"
-            filepath = list(data_path.rglob(filename))[0]
-            data = pd.read_csv(filepath, sep="\s+", skiprows=1, header=None)
-            s_data.w_cells = data.values[:, 1:4]
-            s_data.cc_pressure = data.values[:, 4]
-            s_data.cc_friction = data.values[:, 5:8]
-            s_data.cc_face_areas = data.values[:, 9:12]
+            s_data.w_face_areas = data.values[:, 9:12]
         return
 
     def transform_local_data(self, link_H_world_dict, airspeed, air_dens):
@@ -71,7 +59,6 @@ class FlowImporter:
             link_H_world = link_H_world_dict[s_name]
             # transform the data from world to reference link frame
             s_data.l_nodes = self.transform_points(link_H_world, s_data.w_nodes)
-            s_data.l_cells = self.transform_points(link_H_world, s_data.w_cells)
             # Transform variables to coefficients
             dyn_press = 0.5 * air_dens * airspeed**2
             s_data.press_coeff = s_data.pressure / dyn_press
@@ -84,9 +71,9 @@ class FlowImporter:
         end_coord = np.dot(frame_1_H_frame_2, start_coord.T).T
         return end_coord[:, :3]
 
-    def reorder_surface_data(self):
-        for s_name, s_data in self.surface.items():
-            # Reorder w_nodes to match mesh_nodes order
+    def reorder_data(self):
+        for s_data in self.surface.values():
+            # Reorder data nodes to match mesh_nodes order
             indices = []
             for node in s_data.mesh_nodes:
                 distances = np.linalg.norm(s_data.l_nodes - node, axis=1)
@@ -97,8 +84,10 @@ class FlowImporter:
             s_data.press_coeff = s_data.press_coeff[indices]
             s_data.friction = s_data.friction[indices]
             s_data.fric_coeff = s_data.fric_coeff[indices]
+            s_data.w_face_areas = s_data.w_face_areas[indices]
+        return
 
-    def assign_global_fluent_data(self):
+    def assign_global_data(self):
         self.w_nodes = np.empty(shape=(0, 3))
         self.cp = np.empty(shape=(0,))
         self.cf = np.empty(shape=(0, 3))
@@ -175,35 +164,13 @@ class FlowImporter:
             self.image = np.concatenate((self.image, s_data.image), axis=0)
         return
 
-    def reorder_cell_data(self):
-        for s_data in self.surface.values():
-            indices = []
-            for face in s_data.mesh_faces:
-                node_center = np.mean(s_data.mesh_nodes[face], axis=0)
-                distances = np.linalg.norm(s_data.l_cells - node_center, axis=1)
-                indices.append(np.argmin(distances))
-            s_data.cc_face_areas = s_data.cc_face_areas[indices]
-        return
-
-    def compute_cell_values(self):
-        self.reorder_cell_data()
-        for s_data in self.surface.values():
-            s_data.cc_pressure = np.empty(shape=(0,))
-            s_data.cc_friction = np.empty(shape=(0, 3))
-            for face in s_data.mesh_faces:
-                pressure = np.mean(s_data.pressure[face])
-                friction = np.mean(s_data.friction[face], axis=0)
-                s_data.cc_pressure = np.append(s_data.cc_pressure, pressure)
-                s_data.cc_friction = np.vstack((s_data.cc_friction, friction))
-        return
-
-    def compute_cell_forces(self):
+    def compute_forces(self):
         w_aero_force = np.empty(shape=(0, 3))
         for s_data in self.surface.values():
-            areas = np.linalg.norm(s_data.cc_face_areas, axis=1)
+            areas = np.linalg.norm(s_data.w_face_areas, axis=1)
             d_force = (
-                s_data.cc_pressure[:, np.newaxis] * s_data.cc_face_areas
-                + s_data.cc_friction * areas[:, np.newaxis]
+                s_data.pressure[:, np.newaxis] * s_data.w_face_areas
+                + s_data.friction * areas[:, np.newaxis]
             )
             s_data.w_aero_force = np.sum(d_force, axis=0)
             w_aero_force = np.vstack((w_aero_force, s_data.w_aero_force))
@@ -227,7 +194,7 @@ class FlowGenerator:
             s_data.mesh_nodes = self.transform_points(link_H_world, w_mesh_nodes)
         return
 
-    def load_mesh_cells(
+    def load_mesh(
         self,
         fluent_data_path,
         link_H_world_ref,
@@ -242,32 +209,30 @@ class FlowGenerator:
                 )
             )[0]
             data = np.loadtxt(database_file_path, skiprows=1)
-            w_cells = data[:, 1:4]
-            w_area = data[:, 9:12]
+            w_nodes = data[:, 1:4]
+            w_areas = data[:, 9:12]
             # transform the data from world to reference link frame
-            s_data.l_cells = self.transform_points(link_H_world_ref[s_name], w_cells)
-            s_data.l_areas = self.rotate_vectors(link_H_world_ref[s_name], w_area)
+            s_data.l_nodes = self.transform_points(link_H_world_ref[s_name], w_nodes)
+            s_data.l_areas = self.rotate_vectors(link_H_world_ref[s_name], w_areas)
         return
 
-    def reorder_cell_data(self):
+    def reorder_mesh(self):
         for s_data in self.surface.values():
+            # Reorder data nodes to match mesh_nodes order
             indices = []
-            for face in s_data.mesh_faces:
-                node_center = np.mean(s_data.mesh_nodes[face], axis=0)
-                distances = np.linalg.norm(s_data.l_cells - node_center, axis=1)
+            for node in s_data.mesh_nodes:
+                distances = np.linalg.norm(s_data.l_nodes - node, axis=1)
                 indices.append(np.argmin(distances))
-            s_data.l_cells = s_data.l_cells[indices]
+            s_data.l_nodes = s_data.l_nodes[indices]
             s_data.l_areas = s_data.l_areas[indices]
         return
 
-    def transform_mesh_cells(self, world_H_link):
+    def transform_mesh(self, world_H_link):
         self.w_nodes = np.empty(shape=(0, 3))
         for s_name, s_data in self.surface.items():
-            s_data.w_cells = self.transform_points(world_H_link[s_name], s_data.l_cells)
+            s_data.w_nodes = self.transform_points(world_H_link[s_name], s_data.l_nodes)
             s_data.w_areas = self.rotate_vectors(world_H_link[s_name], s_data.l_areas)
-            w_nodes = self.transform_points(world_H_link[s_name], s_data.l_nodes)
-            s_data.w_nodes = w_nodes
-            self.w_nodes = np.append(self.w_nodes, w_nodes, axis=0)
+            self.w_nodes = np.append(self.w_nodes, s_data.w_nodes, axis=0)
         return
 
     def transform_points(self, frame_1_H_frame_2, points):
@@ -321,23 +286,12 @@ class FlowGenerator:
             self.cf = np.vstack((self.cf, s_data.fric_coeff))
         return
 
-    def compute_cell_values(self):
-        for s_data in self.surface.values():
-            s_data.cc_press_coeff = np.empty(shape=(0,))
-            s_data.cc_fric_coeff = np.empty(shape=(0, 3))
-            for face in s_data.mesh_faces:
-                press_coeff = np.mean(s_data.press_coeff[face])
-                fric_coeff = np.mean(s_data.fric_coeff[face], axis=0)
-                s_data.cc_press_coeff = np.append(s_data.cc_press_coeff, press_coeff)
-                s_data.cc_fric_coeff = np.vstack((s_data.cc_fric_coeff, fric_coeff))
-        return
-
-    def compute_cell_forces(self, airspeed, air_dens):
+    def compute_forces(self, airspeed, air_dens):
         dyn_pressure = 0.5 * air_dens * airspeed**2
         w_aero_force = np.empty(shape=(0, 3))
         for s_data in self.surface.values():
-            pressure = s_data.cc_press_coeff[:, np.newaxis] * dyn_pressure
-            friction = s_data.cc_fric_coeff * dyn_pressure
+            pressure = s_data.press_coeff[:, np.newaxis] * dyn_pressure
+            friction = s_data.fric_coeff * dyn_pressure
             areas = np.linalg.norm(s_data.w_areas, axis=1)[:, np.newaxis]
             d_force = pressure * s_data.w_areas + friction * areas
             s_data.w_aero_force = np.sum(d_force, axis=0)
