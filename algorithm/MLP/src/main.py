@@ -107,8 +107,7 @@ def main():
         model = mod.MLP().to(device)
 
         # Initialize weights
-        init_weights = torch.empty(Const.in_dim, Const.hid_dim)
-        nn.init.xavier_normal_(init_weights)
+        mod.initialize_weights_xavier_normal(model)
         # Define loss function
         loss = torch.nn.MSELoss()
         # Define optimizer
@@ -166,16 +165,15 @@ def main():
         # Define the objective function
         def objective(trial):
             print(f"Optuna trial: {Const.optuna_trial}/{Const.n_trials}")
-            Const.lr = trial.suggest_float("lr", 1e-4, 1e-2)
-            Const.reg_par = trial.suggest_float("reg_par", 1e-9, 1e-5)
-            Const.hid_layers = trial.suggest_int("hid_layers", 3, 7)
-            hid_dim_pow = trial.suggest_int("hid_dim_pow", 7, 10)
+            # Const.lr = trial.suggest_float("lr", 1e-4, 1e-2)
+            # Const.reg_par = trial.suggest_float("reg_par", 1e-9, 1e-5)
+            Const.hid_layers = trial.suggest_int("hid_layers", 5, 7)
+            hid_dim_pow = trial.suggest_int("hid_dim_pow", 8, 10)
             Const.hid_dim = int(2**hid_dim_pow)
             # Define the MLP model
             model = mod.MLP().to(device)
             # Initialize weights
-            init_weights = torch.empty(Const.in_dim, Const.hid_dim)
-            nn.init.xavier_normal_(init_weights)
+            mod.initialize_weights_xavier_normal(model)
             # Define loss function
             loss = torch.nn.MSELoss()
             # Define optimizer
