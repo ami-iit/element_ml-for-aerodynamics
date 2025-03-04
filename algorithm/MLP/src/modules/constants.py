@@ -1,7 +1,7 @@
 """
 Author: Antonello Paolino
 Date: 2025-02-12
-Description: Implementing a dataclass for storing the constant values.
+Description: Implementing a singleton class for storing the constant values.
 """
 
 

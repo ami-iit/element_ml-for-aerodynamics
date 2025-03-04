@@ -1,7 +1,7 @@
 """
 Author: Antonello Paolino
 Date: 2025-01-31
-Description:    Module for logging data and output
+Description: Module for logging data and output
 """
 
 import wandb

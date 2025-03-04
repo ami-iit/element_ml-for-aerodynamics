@@ -1,7 +1,7 @@
 """
 Author: Antonello Paolino
 Date: 2025-01-31
-Description:    Module for generating the output files.
+Description: Module for generating the output files.
 """
 
 from pathlib import Path

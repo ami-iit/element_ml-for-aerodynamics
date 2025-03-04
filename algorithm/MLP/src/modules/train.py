@@ -6,8 +6,6 @@ Description:    Module for training the learning algorithm.
 
 import time
 import wandb
-import torch
-from torch import autocast
 
 from modules.constants import Const
 
@@ -24,8 +22,6 @@ def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
     start_time = time.time()
     min_val_loss = 1e6
 
-    train_len = len(train_dataloader)
-    val_len = len(val_dataloader)
     print("\nStarting the training \n")
     while not stop_train:
         time_start = time.time()
