@@ -58,7 +58,7 @@ def main():
         database = np.empty(
             shape=(
                 len(pitch_yaw_angles),
-                len(robot.surface_list),
+                4 * len(robot.surface_list),
                 robot.image_resolution[0],
                 robot.image_resolution[1],
             ),

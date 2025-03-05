@@ -68,7 +68,7 @@ def main():
         pitch_yaw_angles = find_pitch_yaw_angles(config_name, file_names)
         abs_err = np.zeros((len(pitch_yaw_angles), 3))
         rel_err = np.zeros((len(pitch_yaw_angles), 3))
-        for idx, pitch_yaw in enumerate(pitch_yaw_angles[:2]):
+        for idx, pitch_yaw in enumerate(pitch_yaw_angles):
             pitch = int(pitch_yaw[0])
             yaw = int(pitch_yaw[1])
             # Set robot state and get link to world transformations

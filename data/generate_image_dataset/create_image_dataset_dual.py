@@ -58,7 +58,7 @@ def main():
         database = np.empty(
             shape=(
                 len(pitch_yaw_angles),
-                len(robot.surface_list),
+                4 * len(robot.surface_list),
                 robot.image_resolution[0],
                 robot.image_resolution[1],
             ),
@@ -76,7 +76,7 @@ def main():
             flow.reorder_data()
             flow.assign_global_data()
             # Data Interpolation and Image Generation
-            flow.interp_3d_to_image(robot.image_resolutions)
+            flow.interp_3d_to_image(robot.image_resolution)
             database[idx, :, :, :] = flow.image
             pitch_angles.append(pitch)
             yaw_angles.append(yaw)
