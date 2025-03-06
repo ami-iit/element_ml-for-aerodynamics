@@ -17,6 +17,7 @@ dependencies:
   - openpyxl
   - huggingface_hub
   - optuna
+  - scikit-learn
   - pip
   - pip:
     - --extra-index-url https://download.pytorch.org/whl/cu124
