@@ -28,5 +28,6 @@ dependencies:
     - open3d
     - wandb
     - plotly
+    - pytorch-msssim
 variables:
   CUBLAS_WORKSPACE_CONFIG: :4096:8
