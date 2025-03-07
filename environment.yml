@@ -18,6 +18,8 @@ dependencies:
   - huggingface_hub
   - optuna
   - scikit-learn
+  - pandas
+  - libblas=*=*netlib
   - pip
   - pip:
     - --extra-index-url https://download.pytorch.org/whl/cu124
@@ -28,7 +30,7 @@ dependencies:
     - torchinfo
     - open3d
     - wandb
-    - plotly
+    - plotly==5.24.0
     - pytorch-msssim
 variables:
   CUBLAS_WORKSPACE_CONFIG: :4096:8
