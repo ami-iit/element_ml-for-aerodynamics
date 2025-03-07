@@ -11,7 +11,7 @@ import pickle
 from pathlib import Path
 from resolve_robotics_uri_py import resolve_robotics_uri
 from src.robot import Robot
-from src.dual_flow import FlowImporter, FlowGenerator, FlowVisualizer
+from src.flow_dual import FlowImporter, FlowGenerator, FlowVisualizer
 import open3d as o3d
 from matplotlib.pyplot import Normalize
 from matplotlib import cm

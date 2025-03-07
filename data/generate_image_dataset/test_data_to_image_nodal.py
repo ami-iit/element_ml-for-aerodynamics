@@ -13,7 +13,7 @@ from matplotlib import gridspec
 from pathlib import Path
 from resolve_robotics_uri_py import resolve_robotics_uri
 from src.robot import Robot
-from src.flow_new import FlowImporter, FlowVisualizer
+from src.flow_nodal import FlowImporter, FlowVisualizer
 
 
 SAVE_IMAGE = False
