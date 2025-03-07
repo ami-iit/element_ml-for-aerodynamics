@@ -17,6 +17,8 @@ dependencies:
   - openpyxl
   - huggingface_hub
   - optuna
+  - rich
+  - pyvista
   - scikit-learn
   - pandas
   - libblas=*=*netlib
@@ -29,7 +31,10 @@ dependencies:
     - torchsummary
     - torchinfo
     - open3d
+    - optuna
     - wandb
+    - onnx
+    - onnxruntime
     - plotly==5.24.0
     - pytorch-msssim
 variables:
