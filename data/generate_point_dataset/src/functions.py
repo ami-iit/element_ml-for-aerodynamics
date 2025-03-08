@@ -31,11 +31,10 @@ def find_pitch_yaw_angles(joint_config_name, file_names):
 
 
 def compute_wind_velocity(pitch, yaw, wind_intensity):
-    R_pitch = R.from_euler("y", -pitch, degrees=True)
-    R_yaw = R.from_euler("z", -yaw, degrees=True)
-    R_align = R.from_euler("y", -90, degrees=True)
-    A_R_b = R_align * R_yaw * R_pitch
-    wind_velocity = A_R_b.inv().as_matrix()[:, 0] * wind_intensity
+    a_R_b = R.from_euler("zxy", [-90, -pitch, yaw], degrees=True).as_matrix()
+    b_R_A = a_R_b.T
+    wind_versor = b_R_A @ np.array([0, 0, -1])
+    wind_velocity = wind_versor * wind_intensity
     return wind_velocity
 
 
