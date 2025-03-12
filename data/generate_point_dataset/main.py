@@ -55,15 +55,12 @@ def main():
             raw_data = pd.read_csv(sim_file, sep="\s+", skiprows=1, header=None)
 
             # Import data
-            raw_node_pos = raw_data.values[:, 1:4]
-            raw_face_normals = raw_data.values[:, 9:12]
+            node_pos = raw_data.values[:, 1:4]
+            face_normals = raw_data.values[:, 9:12]
             pressure_coefficient = raw_data.values[:, 4] / DYN_PRESSURE
             friction_coefficient = raw_data.values[:, 5:8] / DYN_PRESSURE
 
-            # transform data
-            node_pos, face_normals = fn.rotate_geometry(
-                raw_node_pos, raw_face_normals, pitch, yaw
-            )
+            # Transform data
             face_areas = np.linalg.norm(face_normals, axis=1, keepdims=True)
             face_normals = face_normals / face_areas
             wind_velocities = np.tile(wind_velocity, (node_pos.shape[0], 1))
@@ -81,9 +78,6 @@ def main():
                     face_areas.reshape(-1, 1),
                 )
             )
-
-            # Check robot geometry alignment
-            # fn.check_geometry(node_pos, pressure_coefficient)
 
             # Append data to current configuration data
             config_data["data"].append(sim_data.astype(np.float32))
