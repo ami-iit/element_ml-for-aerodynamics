@@ -27,18 +27,16 @@ def main():
     data_path = Path(str(data_dir).strip())
 
     # Get configuration names and joint configurations
-    file_names = [file.name for file in data_path.rglob("*.dtbs") if file.is_file()]
-    config_names = sorted(
-        list(set([file_name.split("-")[0] for file_name in file_names]))
-    )
-    joint_config_file_path = list(data_path.rglob("joint-configurations.csv"))[0]
-    joint_configs = np.genfromtxt(joint_config_file_path, delimiter=",", dtype=str)
+    files = [file.name for file in data_path.rglob("*.dtbs") if file.is_file()]
+    configs = sorted(list(set([file.split("-")[0] for file in files])))
+    joint_config_file = list(data_path.rglob("joint-configurations.csv"))[0]
+    joint_configs = np.genfromtxt(joint_config_file, delimiter=",", dtype=str)
 
     # Start the cycle on configurations
     data = []
-    for config in config_names:
+    for config in configs:
         joint_pos = joint_configs[joint_configs[:, 0] == config][0, 1:].astype(float)
-        pitch_yaw_angles = fn.find_pitch_yaw_angles(config, file_names)
+        pitch_yaw_angles = fn.find_pitch_yaw_angles(config, files)
         config_data = {"data": [], "pitch_angles": [], "yaw_angles": []}
 
         # Start the cycle on simulations
@@ -57,24 +55,24 @@ def main():
             # Import data
             node_pos = raw_data.values[:, 1:4]
             face_normals = raw_data.values[:, 9:12]
-            pressure_coefficient = raw_data.values[:, 4] / DYN_PRESSURE
-            friction_coefficient = raw_data.values[:, 5:8] / DYN_PRESSURE
+            press_coeff = raw_data.values[:, 4] / DYN_PRESSURE
+            fric_coeff = raw_data.values[:, 5:8] / DYN_PRESSURE
 
             # Transform data
             face_areas = np.linalg.norm(face_normals, axis=1, keepdims=True)
             face_normals = face_normals / face_areas
             wind_velocities = np.tile(wind_velocity, (node_pos.shape[0], 1))
-            joint_pos_matrix = np.tile(joint_pos, (node_pos.shape[0], 1))
+            joint_pos_mat = np.tile(joint_pos, (node_pos.shape[0], 1))
 
             # Assemble single simulation data
             sim_data = np.hstack(
                 (
                     wind_velocities,
-                    joint_pos_matrix,
+                    joint_pos_mat,
                     node_pos,
                     face_normals,
-                    pressure_coefficient.reshape(-1, 1),
-                    friction_coefficient,
+                    press_coeff.reshape(-1, 1),
+                    fric_coeff,
                     face_areas.reshape(-1, 1),
                 )
             )
@@ -86,7 +84,7 @@ def main():
 
             # Print progress
             print(
-                f"{config} configuration progress: {idx}/{sim_num}",
+                f"{config} configuration progress: {idx+1}/{sim_num}",
                 end="\r",
                 flush=True,
             )
@@ -94,8 +92,10 @@ def main():
         # Save compressed dataset using compressed numpy
         np.savez_compressed(dataset_dir / f"ironcub-{config}.npz", data=config_data)
         print(f"Dataset for {config} configuration saved.")
+
         # Append config_data to the global dataset
         data.extend(config_data)
+
     # Save compressed dataset using compressed numpy
     np.savez_compressed(dataset_dir / "ironcub-full.npz", data=data)
     print("Full dataset saved.")
