@@ -55,7 +55,8 @@ class MlpDataset(Dataset):
         end = min(start + self.batch_size, len(self.X))
         return self.X[start:end], self.Y[start:end]
 
+
 def initialize_weights_xavier_normal(model):
-    for layer in model.named_modules().values():
+    for name, layer in model.named_modules():
         if isinstance(layer, (torch.nn.Linear)):
             torch.nn.init.xavier_uniform_(layer.weight, gain=1.0)
