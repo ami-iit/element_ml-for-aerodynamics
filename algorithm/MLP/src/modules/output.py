@@ -37,7 +37,8 @@ def gen_folder(fname):
 
 def save_scaling(scaling_params):
     print("Saving scaling parameters as scaling.npy")
-    np.save(Const.out_dir + "/scaling", scaling_params)
+    scaling = {idx: val for idx, val in enumerate(scaling_params)}
+    np.save(Const.out_dir + "/scaling", scaling)
     if Const.wandb_logging:
         scale_artifact = wandb.Artifact("scaling-parameters", type="parameters")
         scale_artifact.add_file(Const.out_dir + "/scaling.npy")
