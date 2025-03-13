@@ -25,9 +25,9 @@ dependencies:
   - pip
   - pip:
     - --extra-index-url https://download.pytorch.org/whl/cu124
-    - torch
-    - torchvision
-    - torchaudio
+    - torch==2.5.0
+    - torchvision==0.20.0
+    - torchaudio==2.5.0
     - torchsummary
     - torchinfo
     - open3d
@@ -37,5 +37,7 @@ dependencies:
     - onnxruntime
     - plotly==5.24.0
     - pytorch-msssim
+    - --extra-index-url https://data.pyg.org/whl/torch-2.5.0+cu124.html
+    - torch_geometric
 variables:
   CUBLAS_WORKSPACE_CONFIG: :4096:8
