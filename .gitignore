@@ -44,3 +44,4 @@
 
 # SU2 solution files
 *.vtu
+*.su2
