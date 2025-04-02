@@ -4,6 +4,9 @@
 # Matlab temp files
 *.asv
 
+# Matlab workspace files
+*.mat
+
 # Python datasets
 *.npy
 *.npz
@@ -38,3 +41,6 @@
 
 # CSVs
 *.csv
+
+# SU2 solution files
+*.vtu
