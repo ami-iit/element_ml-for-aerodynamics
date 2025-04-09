@@ -1,18 +1,20 @@
 import numpy as np
-import pandas as pd
 import open3d as o3d
+import torch
 from vtk import vtkXMLUnstructuredGridReader
+from matplotlib import pyplot as plt
 from matplotlib.pyplot import Normalize
 from matplotlib import cm
 from scipy.interpolate import (
-    griddata,
     RegularGridInterpolator,
     LinearNDInterpolator,
     NearestNDInterpolator,
 )
 from scipy.spatial.transform import Rotation as R
-
-from matplotlib import pyplot as plt
+from scipy.stats import gaussian_kde
+import plotly.graph_objects as go
+from numpy.linalg import solve
+from scipy.spatial.distance import cdist
 
 
 class FlowImporter:
@@ -147,6 +149,36 @@ class FlowGenerator:
         self.interp = interp
         return
 
+    # Load the trained models
+    def load_models(self, encoder_path, decoder_path):
+        self.encoder = torch.jit.load(encoder_path).to("cpu")
+        self.decoder = torch.jit.load(decoder_path).to("cpu")
+        self.encoder.eval()
+        self.decoder.eval()
+        return
+
+    # Thin Plate Spline RBF
+    def tps_rbf(self, r, epsilon=1e-6):
+        r = np.maximum(r, epsilon)  # Avoid log(0)
+        return r**2 * np.log(r)
+
+    # Train RBF using TPS
+    def train_rbf_tps(self, X_train, Y_train, epsilon=1e-10):
+        pairwise_dists = cdist(X_train, X_train, "euclidean")  # (N, N)
+        Phi = self.tps_rbf(pairwise_dists, epsilon)  # (N, N)
+        # Solve Phi * W = Y
+        W = solve(Phi, Y_train)  # (N, 3)
+        self.rbf_centers = X_train
+        self.rbf_weights = W
+        self.rbf_epsilon = epsilon
+        return
+
+    # Predict using TPS
+    def predict_rbf_tps(self, X_new):
+        pairwise_dists = cdist(X_new, self.rbf_centers, "euclidean")  # (M, N)
+        Phi_new = self.tps_rbf(pairwise_dists, self.rbf_epsilon)  # (M, N)
+        return Phi_new @ self.rbf_weights  # (M, 3)
+
     def interpolate_flow_data(self, image):
         interp = self.interp
         query_points = self.map
@@ -193,3 +225,103 @@ class FlowVisualizer:
         # Display the pointcloud
         o3d.visualization.draw_geometries([pcd])
         return
+
+    def plot_2D_latent_space_projections(self, input, latent_space):
+        input_names = [key for key in input.keys()]
+        ls_dim = latent_space.shape[1]
+        for k, input_name in enumerate(input_names):
+            c = input[input_name]
+            vmin = np.min(c)
+            vmax = np.max(c)
+            cmap = "jet"
+            fig, axes = plt.subplots(ls_dim, ls_dim)
+            fig.suptitle(f"Latent space according to {input_name}")
+            for i in range(ls_dim):
+                for j in range(ls_dim):
+                    if j > i:
+                        axes[i, j].set_axis_off()
+                    elif i == j:
+                        kde = gaussian_kde(latent_space[:, i])
+                        dist_space = np.linspace(
+                            min(latent_space[:, i]), max(latent_space[:, i]), 100
+                        )
+                        axes[i, j].plot(dist_space, kde(dist_space))
+                    elif j < i:
+                        axes[i, j].scatter(
+                            latent_space[:, j],
+                            latent_space[:, i],
+                            c=c,
+                            s=20,
+                            cmap=cmap,
+                            vmin=vmin,
+                            vmax=vmax,
+                        )
+                    axes[i, j].grid()
+                    axes[i, j].set_ylabel(f"Latent Var {i+1}") if j == 0 else None
+                    (
+                        axes[i, j].set_xlabel(f"Latent Var {j+1}")
+                        if i == ls_dim - 1
+                        else None
+                    )
+            plt.show()
+
+    def plot_3D_latent_space(self, input, latent_space):
+        input_names = [key for key in input.keys()]
+        for k, input_name in enumerate(input_names):
+            c = input[input_name]
+            vmin = np.min(c)
+            vmax = np.max(c)
+            cmap = "hsv" if input_name == "yaw" else "jet"
+            fig = go.Figure(
+                data=[
+                    go.Scatter3d(
+                        x=latent_space[:, 0],
+                        y=latent_space[:, 1],
+                        z=latent_space[:, 2],
+                        mode="markers",
+                        marker=dict(
+                            size=5,
+                            color=c,
+                            colorscale=cmap,
+                            cmin=vmin,
+                            cmax=vmax,
+                            colorbar=dict(title=input_name),
+                        ),
+                    )
+                ]
+            )
+            fig.update_layout(
+                scene=dict(
+                    xaxis_title="Latent Var 1",
+                    yaxis_title="Latent Var 2",
+                    zaxis_title="Latent Var 3",
+                )
+            )
+            fig.show()
+
+    def plot_rbf_result(self, input, X_image, latent_space_pred):
+        # Plot the RBF result
+        input_names = [key for key in input.keys()]
+        ls_dim = latent_space_pred.shape[1]
+        fig, axes = plt.subplots(1, ls_dim)
+        fig.suptitle(f"Latent space reconstruction via RBF")
+        for i in range(ls_dim):
+            c = latent_space_pred[:, i]
+            axes[i].set_title(f"latent Var #{i+1}")
+            axes[i].imshow(
+                c.reshape(X_image[0].shape),
+                extent=[
+                    X_image[1].min(),
+                    X_image[1].max(),
+                    X_image[0].min(),
+                    X_image[0].max(),
+                ],
+                cmap="jet",
+                origin="lower",
+                vmin=np.min(c),
+                vmax=np.max(c),
+            )
+            axes[i].set_xlabel(input_names[1])
+            axes[i].set_ylabel(input_names[0])
+            plt.tight_layout()
+        plt.show()
