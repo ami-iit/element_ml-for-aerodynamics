@@ -23,7 +23,7 @@ def main():
     # Generate mappings
     data = {}
     alt_data = {}
-    for wing in wing_names[1:]:
+    for wing in wing_names:
         wing_data = {}
         filename = f"{wing}.su2"
         meshfile = list(mesh_dir.rglob(filename))[0]
@@ -115,7 +115,7 @@ def main():
             "nodes": nodes,
             "faces": faces,
         }
-        np.save(map_dir / f"{wing}-map-new.npy", wing_alt_data)
+        np.save(map_dir / f"{wing}-map-warped.npy", wing_alt_data)
         alt_data[wing] = wing_alt_data
         print(f"{wing} mapping generated.")
     # Save map data to file

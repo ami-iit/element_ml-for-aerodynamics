@@ -4,6 +4,7 @@ from scipy.sparse.linalg import spsolve
 from scipy.optimize import minimize
 import open3d as o3d
 from matplotlib import cm
+import matplotlib.pyplot as plt
 
 
 def beltrami_coefficient(v, f, map):
@@ -1262,3 +1263,109 @@ def SDEM(v, f, population, S=None, dt=0.1, epsilon=1e-3, max_iter=200):
             counter += 1
 
     return r
+
+
+def planar_conformal_map(v, f, boundary_poly):
+    """
+    A linear method for computing spherical conformal map of a genus-0 closed surface.
+
+    Input:
+    v: nv x 3 vertex coordinates of a genus-0 triangle mesh
+    f: nf x 3 triangulations of a genus-0 triangle mesh
+    bigtri_idx: index of the most regular triangle to use as the "big triangle"
+
+    Output:
+    map: nv x 3 vertex coordinates of the spherical conformal parameterization
+    """
+
+    # Set the boundary polygon as a unit square
+    b_points = boundary_poly[0]
+    b_nodes = boundary_poly[1]
+    unit_square = compute_unit_square(len(b_nodes))
+
+    # Compute conformal map by solving Laplace equation on a big square
+    nv = v.shape[0]
+    M = cotangent_laplacian(v, f)
+
+    fixed = np.array(b_nodes)
+
+    # Modify the matrix M to enforce boundary conditions
+    M = M.tocsr()
+    mrow, mcol, mval = find(M[fixed, :])
+    M = (
+        M
+        - csr_array((mval, (fixed[mrow], mcol)), shape=(nv, nv))
+        + csr_array((np.ones(len(fixed)), (fixed, fixed)), shape=(nv, nv))
+    )
+
+    # Set the boundary condition for the big square
+    x1, y1 = 0, 0
+    x2, y2 = 1, 0
+    x = unit_square[:, 0]
+    y = unit_square[:, 1]
+
+    # Solve the Laplace equation to obtain a harmonic map
+    c = np.zeros(nv)
+    d = np.zeros(nv)
+    for i in range(len(b_nodes)):
+        node = b_nodes[i]
+        c[node] = x[i]
+        d[node] = y[i]
+    z = spsolve(M, c + 1j * d)
+    # z = z - np.mean(z)
+
+    map = np.stack((z.real, z.imag), axis=-1)
+
+    return map
+
+
+def compute_unit_square(n):
+    if n < 4:
+        raise ValueError("Need at least 4 points to include all square corners.")
+
+    # Determine base number of points per edge and remainder
+    base = n // 4
+    remainder = n % 4
+
+    # Distribute remainder to edges (some edges may get one extra point)
+    edge_counts = [base + (1 if i < remainder else 0) for i in range(4)]
+
+    points = []
+
+    # Define edge endpoints
+    edges = [
+        ((0, 0), (1, 0)),  # bottom
+        ((1, 0), (1, 1)),  # right
+        ((1, 1), (0, 1)),  # top
+        ((0, 1), (0, 0)),  # left
+    ]
+
+    for count, (start, end) in zip(edge_counts, edges):
+        xs = np.linspace(start[0], end[0], count, endpoint=False)
+        ys = np.linspace(start[1], end[1], count, endpoint=False)
+        edge_points = np.stack((xs, ys), axis=1)
+        points.append(edge_points)
+
+    # Close the loop with the last corner
+    points.append(np.array([[0, 0]]))  # ensures the last point is corner (0,0)
+
+    return np.vstack(points)
+
+
+def plot_planar_conformal_map(nodes, faces):
+    fig, ax = plt.subplots()
+    plt.grid(True)
+
+    # Plot each face as connected black edges
+    for face in faces:
+        # Get the positions of the nodes in the face
+        face_nodes = nodes[face]
+        # Close the loop by appending the first point at the end
+        face_nodes = np.vstack([face_nodes, face_nodes[0]])
+        ax.plot(face_nodes[:, 0], face_nodes[:, 1], "k-")
+
+    # Plot nodes as blue dots
+    ax.scatter(nodes[:, 0], nodes[:, 1], s=20, c="blue", marker="o")
+
+    ax.set_aspect("equal")
+    plt.show()

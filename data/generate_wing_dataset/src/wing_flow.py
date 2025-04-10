@@ -58,8 +58,8 @@ class FlowImporter:
         return
 
     def interp_3d_to_image(self, im_res):
-        x_image = np.linspace(0, np.pi, im_res[1])  # psi
-        y_image = np.linspace(-np.pi, np.pi, im_res[0])  # theta
+        x_image = np.linspace(self.map[:, 1].min(), self.map[:, 1].max(), im_res[1])
+        y_image = np.linspace(self.map[:, 0].min(), self.map[:, 0].max(), im_res[0])
         X, Y = np.meshgrid(x_image, y_image)
         # Interpolate the pressure coefficient data
         query_points = np.vstack((Y.ravel(), X.ravel())).T
@@ -135,8 +135,8 @@ class FlowGenerator:
         return
 
     def compute_interpolator(self, im_res):
-        x_image = np.linspace(0, np.pi, im_res[1])  # psi
-        y_image = np.linspace(-np.pi, np.pi, im_res[0])  # theta
+        x_image = np.linspace(self.map[:, 1].min(), self.map[:, 1].max(), im_res[1])
+        y_image = np.linspace(self.map[:, 0].min(), self.map[:, 0].max(), im_res[0])
         # Create and assign interpolator functions
         interp = RegularGridInterpolator(
             (y_image, x_image),
@@ -222,8 +222,18 @@ class FlowVisualizer:
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(self.points)
         pcd.colors = o3d.utility.Vector3dVector(colors)
+        # Set visualization parameters
+        zoom = 0.5
+        x_cen = (self.points[:, 0].max() + self.points[:, 0].min()) / 2
+        y_cen = (self.points[:, 1].max() + self.points[:, 1].min()) / 2
+        z_cen = (self.points[:, 2].max() + self.points[:, 2].min()) / 2
+        center = [x_cen, y_cen, z_cen]
+        front = [-1.0, -1.0, 1.0]
+        up = [0.0, 0.0, 1.0]
         # Display the pointcloud
-        o3d.visualization.draw_geometries([pcd])
+        o3d.visualization.draw_geometries(
+            [pcd], zoom=zoom, lookat=center, front=front, up=up
+        )
         return
 
     def plot_2D_latent_space_projections(self, input, latent_space):
