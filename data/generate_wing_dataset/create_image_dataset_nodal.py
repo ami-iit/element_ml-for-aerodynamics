@@ -11,6 +11,7 @@ from matplotlib import pyplot as plt
 from src.wing_flow import FlowImporter
 
 IM_RES = (256, 256)
+DENSITY_EXP = 3
 
 
 def main():
@@ -21,7 +22,7 @@ def main():
     dataset_dir.mkdir(parents=True, exist_ok=True)
     # Import and set mesh mapping
     map_dir = Path(__file__).parents[0] / "maps"
-    map_file = list(map_dir.rglob(f"S_10-map-pcm.npy"))[0]
+    map_file = list(map_dir.rglob(f"S_10-map-pcm-{DENSITY_EXP}.npy"))[0]
     map_data = np.load(map_file, allow_pickle=True).item()
     flow.import_mapping(map_data)
     # Get the path to the raw data
@@ -50,7 +51,9 @@ def main():
         "database": np.array(database).astype(np.float32),
     }
     # Save compressed dataset using compressed numpy
-    with open(str(dataset_dir / f"wing-images-{IM_RES[0]}-pcm.npz"), "wb") as f:
+    with open(
+        str(dataset_dir / f"wing-images-{IM_RES[0]}-pcm-{DENSITY_EXP}.npz"), "wb"
+    ) as f:
         pickle.dump(dataset, f, protocol=4)
     print(f"Nodal image dataset for wings saved.")
 

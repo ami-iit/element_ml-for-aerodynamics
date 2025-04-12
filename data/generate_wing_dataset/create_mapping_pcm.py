@@ -3,10 +3,10 @@ from pathlib import Path
 
 import src.su2 as su2
 import src.mesh as ms
-import src.sdem as sdem
 import src.mapping as mp
 
 SHOW_PLOTS = True
+DENSITY_EXP = 3
 
 
 def main():
@@ -48,33 +48,40 @@ def main():
         poly = boundary_polygons[0]
         v = np.array(mesh.vertices)
         f = np.array(mesh.triangles)
-        square_map = sdem.planar_conformal_map(v, f, poly)
+        square_map = mp.planar_conformal_map(v, f, poly)
         map2d = square_map[: nodes.shape[0]]
-        sdem.plot_planar_conformal_map(map2d, faces) if SHOW_PLOTS else None
+        mp.plot_planar_conformal_map(map2d, faces) if SHOW_PLOTS else None
 
         # Redistribute points
         adj_list = mp.get_adjacency_list(faces)
-        map2dr = mp.redistribute_points_with_constrain(
+        map2dr = mp.redistribute_points_with_equilibrium_constrain(
             map2d,
-            num_iterations=10000,
-            step_size=0.5,
             adj_list=adj_list,
             boundary_nodes=poly[1],
         )
 
+        mp.plot_planar_conformal_map(map2dr, faces) if SHOW_PLOTS else None
+
+        map2dr_dens = mp.redistribute_points_with_equilibrium_constrain_density(
+            map2dr,
+            adj_list=adj_list,
+            boundary_nodes=poly[1],
+            density_exp=DENSITY_EXP,
+        )
+
         if SHOW_PLOTS:
-            sdem.plot_planar_conformal_map(map2dr, faces)
-            mp.plot_mapping(map2d, map2dr, nodes[:, 0], wing)
-            mp.plot_mapping(map2d, map2dr, nodes[:, 1], wing)
-            mp.plot_mapping(map2d, map2dr, nodes[:, 2], wing)
+            mp.plot_planar_conformal_map(map2dr, faces)
+            mp.plot_mapping(map2dr, map2dr_dens, nodes[:, 0], wing)
+            mp.plot_mapping(map2dr, map2dr_dens, nodes[:, 1], wing)
+            mp.plot_mapping(map2dr, map2dr_dens, nodes[:, 2], wing)
 
         # Save the mapping
         wing_data = {
-            "map": map2dr,
+            "map": map2dr_dens,
             "nodes": nodes,
             "faces": faces,
         }
-        np.save(map_dir / f"{wing}-map-pcm.npy", wing_data)
+        np.save(map_dir / f"{wing}-map-pcm-{DENSITY_EXP}.npy", wing_data)
 
 
 if __name__ == "__main__":

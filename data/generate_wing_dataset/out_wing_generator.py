@@ -9,8 +9,8 @@ from pathlib import Path
 
 from src.wing_flow import FlowGenerator, FlowVisualizer
 
-AOA = 12.5
-SWEEP = 15.0
+AOA = 10.0
+SWEEP = 10.0
 
 
 def main():
@@ -18,13 +18,13 @@ def main():
     # Initialize flow object
     flow = FlowGenerator()
     # Load the dataset
-    dataset_file = root / "dataset" / "wing-images-256.npz"
+    dataset_file = root / "dataset" / "wing-images-256-pcm-3.npz"
     dataset = np.load(dataset_file, allow_pickle=True)
     sweeps = dataset["sweep_angles"]
     aoas = dataset["angles_of_attack"]
     images = dataset["database"]
     # Import and set mesh mapping
-    map_file = root / "maps" / "S_10-map.npy"
+    map_file = root / "maps" / "S_10-map-pcm-3.npy"
     map_data = np.load(map_file, allow_pickle=True).item()
     flow.import_mapping(map_data)
     # Initialize interpolator
