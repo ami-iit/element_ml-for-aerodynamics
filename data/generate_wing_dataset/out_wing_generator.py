@@ -9,7 +9,10 @@ from pathlib import Path
 
 from src.wing_flow import FlowGenerator, FlowVisualizer
 
-AOA = 10.0
+IM_RES = (256, 256)
+DENSITY_EXP = 1
+
+AOA = 11.0
 SWEEP = 10.0
 
 
@@ -18,46 +21,50 @@ def main():
     # Initialize flow object
     flow = FlowGenerator()
     # Load the dataset
-    dataset_file = root / "dataset" / "wing-images-256-pcm-3.npz"
+    dataset_file = root / "dataset" / f"wing-images-{IM_RES[0]}-eem-{DENSITY_EXP}.npz"
     dataset = np.load(dataset_file, allow_pickle=True)
     sweeps = dataset["sweep_angles"]
     aoas = dataset["angles_of_attack"]
     images = dataset["database"]
     # Import and set mesh mapping
-    map_file = root / "maps" / "S_10-map-pcm-3.npy"
+    map_file = root / "maps" / f"S_0-map-eem-{DENSITY_EXP}.npy"
     map_data = np.load(map_file, allow_pickle=True).item()
     flow.import_mapping(map_data)
     # Initialize interpolator
     flow.compute_interpolator(images.shape[2:])
     # Import the trained models
-    model_path = root / "training" / "Out"
+    model_path = root / "training" / "Out_1"
     flow.load_models(
         encoder_path=str(model_path / "scripted_enc.pt"),
         decoder_path=str(model_path / "scripted_dec.pt"),
     )
     # Load the RBF mapping
-    rbf_file = root / "training" / "rbf" / "rbf_data.npy"
+    rbf_file = root / "training" / "rbf" / "rbf_data_1.npy"
     rbf_data = np.load(rbf_file, allow_pickle=True).item()
     flow.rbf_centers = rbf_data["centers"]
     flow.rbf_weights = rbf_data["weights"]
     flow.rbf_epsilon = rbf_data["epsilon"]
 
     # Generate a solution from the dataset using the image generator
-    index = np.where((aoas == AOA) & (sweeps == SWEEP))[0][0]
-    image = images[index]
-    flow.interpolate_flow_data(image)
-    # Plot the solution
-    viz = FlowVisualizer(flow)
-    viz.plot_wing_pressure()
+    index = np.where((aoas == AOA) & (sweeps == SWEEP))[0]
+    in_training = True if index.size > 0 else False
+    if in_training:
+        index = index[0]
+        image = images[index]
+        flow.interpolate_flow_data(image)
+        # Plot the solution
+        viz = FlowVisualizer(flow)
+        viz.plot_wing_pressure(window_name="training image to 3D geometry")
 
     # Generate a solution from the ML models using the image generator
-    in_image = torch.tensor(image[np.newaxis, ...]).to("cpu")
-    latent_space_val = flow.encoder(in_image)
-    out_image = flow.decoder(latent_space_val).cpu().detach().numpy()
-    flow.interpolate_flow_data(out_image[0])
-    # Plot the solution
-    viz = FlowVisualizer(flow)
-    viz.plot_wing_pressure()
+    if in_training:
+        in_image = torch.tensor(image[np.newaxis, ...]).to("cpu")
+        latent_space_val = flow.encoder(in_image)
+        out_image = flow.decoder(latent_space_val).cpu().detach().numpy()
+        flow.interpolate_flow_data(out_image[0])
+        # Plot the solution
+        viz = FlowVisualizer(flow)
+        viz.plot_wing_pressure(window_name="AE predicted image to 3D geometry")
 
     # Generate a solution from the input AoA and sweep
     latent_space_pred = flow.predict_rbf_tps(np.array([[SWEEP, AOA]]))
@@ -66,9 +73,7 @@ def main():
     flow.interpolate_flow_data(out_image[0])
     # Plot the solution
     viz = FlowVisualizer(flow)
-    viz.plot_wing_pressure()
-
-    print("stop")
+    viz.plot_wing_pressure(window_name="RBF-GAE predicted image to 3D geometry")
 
 
 if __name__ == "__main__":

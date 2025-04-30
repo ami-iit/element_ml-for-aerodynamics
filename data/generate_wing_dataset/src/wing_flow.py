@@ -212,7 +212,7 @@ class FlowVisualizer:
     def __init__(self, flow):
         self.__dict__.update(flow.__dict__)
 
-    def plot_wing_pressure(self):
+    def plot_wing_pressure(self, window_name="Open3D"):
         # Normalize the colormap
         norm = Normalize(vmin=min(self.cp), vmax=max(self.cp))
         normalized_flow_variable = norm(self.cp)
@@ -232,7 +232,7 @@ class FlowVisualizer:
         up = [0.0, 0.0, 1.0]
         # Display the pointcloud
         o3d.visualization.draw_geometries(
-            [pcd], zoom=zoom, lookat=center, front=front, up=up
+            [pcd], zoom=zoom, lookat=center, front=front, up=up, window_name=window_name
         )
         return
 

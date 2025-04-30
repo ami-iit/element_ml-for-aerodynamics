@@ -9,6 +9,9 @@ from pathlib import Path
 
 from src.wing_flow import FlowGenerator, FlowVisualizer
 
+IM_RES = (256, 256)
+DENSITY_EXP = 1
+
 
 def main():
     root = Path(__file__).parents[0]
@@ -17,13 +20,13 @@ def main():
     # Initialize flow object
     flow = FlowGenerator()
     # Load the dataset
-    dataset_file = root / "dataset" / "wing-images-256.npz"
+    dataset_file = root / "dataset" / f"wing-images-{IM_RES[0]}-eem-{DENSITY_EXP}.npz"
     dataset = np.load(dataset_file, allow_pickle=True)
     sweeps = dataset["sweep_angles"]
     aoas = dataset["angles_of_attack"]
     images = dataset["database"]
     # Import the trained models
-    model_path = root / "training" / "Out"
+    model_path = root / "training" / "Out_1"
     flow.load_models(
         encoder_path=str(model_path / "scripted_enc.pt"),
         decoder_path=str(model_path / "scripted_dec.pt"),
@@ -63,7 +66,7 @@ def main():
         "weights": flow.rbf_weights,
         "epsilon": flow.rbf_epsilon,
     }
-    np.save(out_dir / f"rbf_data.npy", rbf_data)
+    np.save(out_dir / f"rbf_data_1.npy", rbf_data)
     print("RBF mapping saved")
 
 
