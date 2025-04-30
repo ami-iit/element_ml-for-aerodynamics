@@ -1,3 +1,12 @@
+"""
+Author: Antonello Paolino
+Date: 2025-03-25
+Description: This code generates the Elastic Equilibrium Mapping (EEM) for a set of wings.
+             It reads the mesh data from SU2 files, and computes the planar map at elastic
+             equilibrium. The mapping is then redistributed by reapplying the elastic
+             equilibrium condition with a density-based non-uniform general stiffness matrix.
+"""
+
 import numpy as np
 from pathlib import Path
 
@@ -5,8 +14,9 @@ import src.su2 as su2
 import src.mesh as ms
 import src.mapping as mp
 
+BOUNDARY_SHAPE = "square"
 SHOW_PLOTS = True
-DENSITY_EXP = 3
+DENSITY_EXP = 0
 
 
 def main():
@@ -40,48 +50,38 @@ def main():
         mesh = ms.create_mesh_from_faces(nodes, faces)
         ms.visualize_mesh_with_edges(mesh) if SHOW_PLOTS else None
 
-        # Compute the planar map
+        # Compute the planar map at elastic equilibrium
         boundary_edges = np.array(ms.get_boundary_edges(mesh))
-        boundary_polygons = ms.generate_boundary_polygons(
-            np.array(boundary_edges), nodes
-        )
-        poly = boundary_polygons[0]
-        v = np.array(mesh.vertices)
-        f = np.array(mesh.triangles)
-        square_map = mp.planar_conformal_map(v, f, poly)
-        map2d = square_map[: nodes.shape[0]]
-        mp.plot_planar_conformal_map(map2d, faces) if SHOW_PLOTS else None
-
-        # Redistribute points
+        boundary_polygons = ms.generate_boundary_polygons(boundary_edges, nodes)
+        boundary_nodes = boundary_polygons[0][1]
         adj_list = mp.get_adjacency_list(faces)
-        map2dr = mp.redistribute_points_with_equilibrium_constrain(
+        map2d = mp.compute_elastic_equilibrium_planar_map(
+            boundary_nodes,
+            adj_list,
+            boundary_shape=BOUNDARY_SHAPE,
+        )
+        mp.plot_planar_map(map2d, faces) if SHOW_PLOTS else None
+
+        # Redistribute points with density function
+        map2dr = mp.redistribute_points_with_equilibrium_constrain_density(
             map2d,
             adj_list=adj_list,
-            boundary_nodes=poly[1],
-        )
-
-        mp.plot_planar_conformal_map(map2dr, faces) if SHOW_PLOTS else None
-
-        map2dr_dens = mp.redistribute_points_with_equilibrium_constrain_density(
-            map2dr,
-            adj_list=adj_list,
-            boundary_nodes=poly[1],
+            boundary_nodes=boundary_nodes,
             density_exp=DENSITY_EXP,
         )
-
         if SHOW_PLOTS:
-            mp.plot_planar_conformal_map(map2dr, faces)
-            mp.plot_mapping(map2dr, map2dr_dens, nodes[:, 0], wing)
-            mp.plot_mapping(map2dr, map2dr_dens, nodes[:, 1], wing)
-            mp.plot_mapping(map2dr, map2dr_dens, nodes[:, 2], wing)
+            mp.plot_planar_map(map2dr, faces)
+            mp.plot_mapping(map2d, map2dr, nodes[:, 0], wing)
+            mp.plot_mapping(map2d, map2dr, nodes[:, 1], wing)
+            mp.plot_mapping(map2d, map2dr, nodes[:, 2], wing)
 
         # Save the mapping
         wing_data = {
-            "map": map2dr_dens,
+            "map": map2dr,
             "nodes": nodes,
             "faces": faces,
         }
-        np.save(map_dir / f"{wing}-map-pcm-{DENSITY_EXP}.npy", wing_data)
+        np.save(map_dir / f"{wing}-map-eem-{DENSITY_EXP}.npy", wing_data)
 
 
 if __name__ == "__main__":

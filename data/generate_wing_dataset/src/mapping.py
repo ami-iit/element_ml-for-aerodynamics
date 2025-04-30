@@ -57,103 +57,6 @@ def get_adjacency_list(faces):
     return adjacency_list
 
 
-def cotangent_laplacian(v, f):
-    """
-    Compute the cotangent Laplacian of a mesh.
-
-    Parameters:
-    v : ndarray
-        (N x 3) matrix of vertex coordinates
-    f : ndarray
-        (M x 3) matrix of triangular face indices
-
-    Returns:
-    L : scipy.sparse.coo_array
-        (N x N) sparse cotangent Laplacian matrix
-    """
-    nv = len(v)
-
-    f1, f2, f3 = f[:, 0], f[:, 1], f[:, 2]
-
-    l1 = np.linalg.norm(v[f2] - v[f3], axis=1)
-    l2 = np.linalg.norm(v[f3] - v[f1], axis=1)
-    l3 = np.linalg.norm(v[f1] - v[f2], axis=1)
-
-    s = (l1 + l2 + l3) * 0.5
-    area = np.sqrt(s * (s - l1) * (s - l2) * (s - l3))
-
-    cot12 = (l1**2 + l2**2 - l3**2) / (2 * area)
-    cot23 = (l2**2 + l3**2 - l1**2) / (2 * area)
-    cot31 = (l1**2 + l3**2 - l2**2) / (2 * area)
-
-    diag1 = -cot12 - cot31
-    diag2 = -cot12 - cot23
-    diag3 = -cot31 - cot23
-
-    II = np.hstack([f1, f2, f2, f3, f3, f1, f1, f2, f3])
-    JJ = np.hstack([f2, f1, f3, f2, f1, f3, f1, f2, f3])
-    V = np.hstack([cot12, cot12, cot23, cot23, cot31, cot31, diag1, diag2, diag3])
-
-    L = coo_array((V, (II, JJ)), shape=(nv, nv))
-
-    return L
-
-
-def planar_conformal_map(v, f, boundary_poly):
-    """
-    A linear method for computing spherical conformal map of a genus-0 closed surface.
-
-    Input:
-    v: nv x 3 vertex coordinates of a genus-0 triangle mesh
-    f: nf x 3 triangulations of a genus-0 triangle mesh
-    bigtri_idx: index of the most regular triangle to use as the "big triangle"
-
-    Output:
-    map: nv x 3 vertex coordinates of the spherical conformal parameterization
-    """
-
-    # Set the boundary polygon as a unit square
-    b_points = boundary_poly[0]
-    b_nodes = boundary_poly[1]
-    boundary = compute_unit_square(len(b_nodes))
-    # boundary = compute_unit_circle(len(b_nodes))
-
-    # Compute conformal map by solving Laplace equation on a big square
-    nv = v.shape[0]
-    M = cotangent_laplacian(v, f)
-
-    fixed = np.array(b_nodes)
-
-    # Modify the matrix M to enforce boundary conditions
-    M = M.tocsr()
-    mrow, mcol, mval = find(M[fixed, :])
-    M = (
-        M
-        - csr_array((mval, (fixed[mrow], mcol)), shape=(nv, nv))
-        + csr_array((np.ones(len(fixed)), (fixed, fixed)), shape=(nv, nv))
-    )
-
-    # Set the boundary condition for the big square
-    x1, y1 = 0, 0
-    x2, y2 = 1, 0
-    x = boundary[:, 0]
-    y = boundary[:, 1]
-
-    # Solve the Laplace equation to obtain a harmonic map
-    c = np.zeros(nv)
-    d = np.zeros(nv)
-    for i in range(len(b_nodes)):
-        node = b_nodes[i]
-        c[node] = x[i]
-        d[node] = y[i]
-    z = spsolve(M, c + 1j * d)
-    # z = z - np.mean(z)
-
-    map = np.stack((z.real, z.imag), axis=-1)
-
-    return map
-
-
 def compute_unit_square(n):
     if n < 4:
         raise ValueError("Need at least 4 points to include all square corners.")
@@ -200,6 +103,20 @@ def compute_unit_circle(n):
     points = np.column_stack((x, y))
 
     return points
+
+
+def circular_map_to_square(map):
+    """
+    Convert a circular map to a square map by applying a transformation.
+    """
+    # Compute theta and r coordinates as x and y coordinates
+    theta = np.arctan2(map[:, 1], map[:, 0])
+    r = np.sqrt(map[:, 0] ** 2 + map[:, 1] ** 2)
+
+    # Normalize theta between 0 and 1
+    theta = (theta + np.pi) / (2 * np.pi)  # Normalize to [0, 1]
+
+    return np.column_stack((theta, r))
 
 
 def redistribute_points_with_constrain(
@@ -269,7 +186,7 @@ def redistribute_points_with_constrain(
     return points
 
 
-def plot_planar_conformal_map(nodes, faces):
+def plot_planar_map(nodes, faces):
     fig, ax = plt.subplots()
     plt.grid(True)
 
@@ -317,50 +234,28 @@ def compute_global_stiffness_matrix(adj_list):
     )  # Convert to CSR format for efficient arithmetic and solving
 
 
-def compute_global_stiffness_matrix_density(adj_list, density):
-    """
-    Compute the global stiffness matrix using a sparse matrix representation.
-
-    Parameters
-    ----------
-    adj_list : list of lists
-        Adjacency list representing the mesh connectivity.
-
-    Returns
-    -------
-    K_global : csr_matrix, shape (n_nodes, n_nodes)
-        Sparse global stiffness matrix.
-    """
-    n_nodes = len(adj_list)
-    K_global = lil_matrix(
-        (n_nodes, n_nodes)
-    )  # Use LIL format for efficient row-wise construction
-
-    for i in range(n_nodes):
-        for j in adj_list[i]:
-            K_global[i, j] -= density[i]
-            K_global[i, i] += density[i]
-
-    return K_global.tocsr()
-
-
-def redistribute_points_with_equilibrium_constrain(
-    points,
+def compute_elastic_equilibrium_planar_map(
     boundary_nodes,
     adj_list,
+    boundary_shape="square",
 ):
-    x = points[:, 0]
-    y = points[:, 1]
+    # Compute planar boundary points
+    if boundary_shape == "square":
+        boundary_points = compute_unit_square(len(boundary_nodes))
+    elif boundary_shape == "circular":
+        boundary_points = compute_unit_circle(len(boundary_nodes))
+
+    # Compute the global stiffness matrix
     K = compute_global_stiffness_matrix(adj_list).tolil()
 
-    gx = np.zeros_like(x)
-    gy = np.zeros_like(y)
+    gx = np.zeros((K.shape[0], 1))
+    gy = np.zeros((K.shape[0], 1))
 
-    for node in boundary_nodes:
+    for point, node in zip(boundary_points, boundary_nodes):
         K.rows[node] = [node]
         K.data[node] = [1.0]
-        gx[node] = x[node]
-        gy[node] = y[node]
+        gx[node] = point[0]
+        gy[node] = point[1]
 
     K = K.tocsr()  # Convert back to CSR for solving
     u = spsolve(K, gx)
@@ -387,7 +282,7 @@ def compute_local_density(points, adj_list):
     return densities
 
 
-def compute_weighted_stiffness_matrix_sparse(adj_list, densities, density_exp=1.0):
+def compute_weighted_stiffness_matrix(adj_list, densities, density_exp=1.0):
     """
     Compute stiffness matrix with weights inversely proportional to local density.
     """
@@ -416,9 +311,7 @@ def redistribute_points_with_equilibrium_constrain_density(
     densities = compute_local_density(points, adj_list)
 
     # Step 2: Compute stiffness matrix with density-based weights
-    K = compute_weighted_stiffness_matrix_sparse(
-        adj_list, densities, density_exp
-    ).tolil()
+    K = compute_weighted_stiffness_matrix(adj_list, densities, density_exp).tolil()
 
     # Step 3: Apply boundary conditions
     gx = np.zeros_like(x)

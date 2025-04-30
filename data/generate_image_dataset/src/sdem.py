@@ -705,10 +705,6 @@ def plot_mesh(v, f, arg3=None):
         # Assign vertex colors
         mesh.vertex_colors = o3d.utility.Vector3dVector(colors)
 
-    else:
-        # Default color similar to MATLAB [255, 208, 208]/255
-        mesh.paint_uniform_color([255 / 255, 208 / 255, 208 / 255])
-
     # Show the mesh
     # o3d.visualization.draw_geometries([mesh])
     geometries = [
