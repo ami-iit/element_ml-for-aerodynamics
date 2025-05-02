@@ -16,6 +16,8 @@ import plotly.graph_objects as go
 from numpy.linalg import solve
 from scipy.spatial.distance import cdist
 
+from . import mesh as ms
+
 
 class FlowImporter:
     def __init__(self):
@@ -23,7 +25,7 @@ class FlowImporter:
 
     def import_mapping(self, data):
         self.map = data["map"]
-        self.faces = data["faces"]
+        self.map_faces = data["faces"]
         self.map_nodes = data["nodes"]
         return
 
@@ -123,6 +125,44 @@ class FlowImporter:
         )
         return
 
+    def import_mesh(self, nodes, faces):
+        self.nodes = nodes
+        self.faces = faces
+        # Compute face normals and areas
+        self.face_normals = np.zeros((len(self.faces), 3))
+        self.face_areas = np.zeros(len(self.faces))
+        self.face_centroids = np.zeros((len(self.faces), 3))
+        for idx, face in enumerate(self.faces):
+            face_vertices = self.nodes[face]
+            face_normal = np.cross(
+                face_vertices[1] - face_vertices[0],
+                face_vertices[-1] - face_vertices[0],
+            )
+            self.face_normals[idx] = face_normal / np.linalg.norm(face_normal)
+            self.face_areas[idx], self.face_centroids[idx] = (
+                ms.compute_cell_area_and_centroid(face_vertices)
+            )
+        return
+
+    def compute_aerodynamic_coefficients(self, angle_of_attack, ref_area):
+        # Compute the aerodynamic force on each face (assuming dyn_press = 1.0)
+        face_forces = np.zeros((len(self.faces), 3))
+        for idx, face in enumerate(self.faces):
+            cp = np.mean(self.cp[face])
+            cf = np.mean(self.cf[face], axis=0)
+            d_Fp = -self.face_areas[idx] * cp * self.face_normals[idx]
+            d_Ff = self.face_areas[idx] * cf
+            face_forces[idx] = d_Fp + d_Ff
+        # Compute the total aerodynamic force
+        total_force = np.sum(face_forces, axis=0)
+        # Compute the aerodynamic coefficients
+        rot = R.from_euler("y", angle_of_attack, degrees=True)
+        aero_force = np.dot(rot.as_matrix(), total_force)
+        self.drag_coefficient = aero_force[0] / ref_area
+        self.lift_coefficient = aero_force[2] / ref_area
+        self.side_force_coefficient = aero_force[1] / ref_area
+        return
+
 
 class FlowGenerator:
     def __init__(self):
@@ -205,6 +245,44 @@ class FlowGenerator:
         self.points = np.vstack((x, y, z)).T
         self.cp = cp
         self.cf = np.vstack((cf_x, cf_y, cf_z)).T
+        return
+
+    def import_mesh(self, nodes, faces):
+        self.nodes = self.points
+        self.faces = faces
+        # Compute face normals and areas
+        self.face_normals = np.zeros((len(self.faces), 3))
+        self.face_areas = np.zeros(len(self.faces))
+        self.face_centroids = np.zeros((len(self.faces), 3))
+        for idx, face in enumerate(self.faces):
+            face_vertices = self.nodes[face]
+            face_normal = np.cross(
+                face_vertices[1] - face_vertices[0],
+                face_vertices[-1] - face_vertices[0],
+            )
+            self.face_normals[idx] = face_normal / np.linalg.norm(face_normal)
+            self.face_areas[idx], self.face_centroids[idx] = (
+                ms.compute_cell_area_and_centroid(face_vertices)
+            )
+        return
+
+    def compute_aerodynamic_coefficients(self, angle_of_attack, ref_area):
+        # Compute the aerodynamic force on each face (assuming dyn_press = 1.0)
+        face_forces = np.zeros((len(self.faces), 3))
+        for idx, face in enumerate(self.faces):
+            cp = np.mean(self.cp[face])
+            cf = np.mean(self.cf[face], axis=0)
+            d_Fp = -self.face_areas[idx] * cp * self.face_normals[idx]
+            d_Ff = self.face_areas[idx] * cf
+            face_forces[idx] = d_Fp + d_Ff
+        # Compute the total aerodynamic force
+        total_force = np.sum(face_forces, axis=0)
+        # Compute the aerodynamic coefficients
+        rot = R.from_euler("y", angle_of_attack, degrees=True)
+        aero_force = np.dot(rot.as_matrix(), total_force)
+        self.drag_coefficient = aero_force[0] / ref_area
+        self.lift_coefficient = aero_force[2] / ref_area
+        self.side_force_coefficient = aero_force[1] / ref_area
         return
 
 

@@ -86,6 +86,68 @@ def triangulate_face(face, points):
     return triangles, ctrl_node
 
 
+def create_mesh_from_faces_split(points, faces):
+    """Creates a mesh using given points and face connectivity, without control nodes."""
+    # Convert all faces into triangles
+    triangular_faces = []
+    for face in faces:
+        if len(face) >= 3:
+            triangles = triangulate_face_no_ctrl_node(face)
+            triangular_faces.extend(triangles)
+    is_used = np.zeros(len(points), dtype=bool)
+    for face in triangular_faces:
+        for node in face:
+            is_used[node] = True
+    if not np.all(is_used):
+        print("Unused nodes:", np.where(~is_used)[0])
+    # Create Open3D TriangleMesh
+    mesh = o3d.geometry.TriangleMesh()
+    mesh.vertices = o3d.utility.Vector3dVector(points)
+    mesh.triangles = o3d.utility.Vector3iVector(triangular_faces)
+    # Compute normals for better visualization
+    mesh.compute_vertex_normals()
+    return mesh
+
+
+def triangulate_face_no_ctrl_node(face):
+    """Triangulates a face without creating a support node."""
+    if len(face) < 3:
+        raise ValueError("Only faces with 3 or more vertices are supported.")
+    triangles = []
+    if len(face) == 3:
+        triangles.append(face)
+    else:
+        for i in range(1, len(face) - 1):
+            triangles.append([face[0], face[i], face[i + 1]])
+    return triangles
+
+
+def compute_cell_area_and_centroid(vertices):
+    """Computes the area of a generic polygon cell using the shoelace formula."""
+    # project 3D vertices on their average plane
+    centroid = np.mean(vertices, axis=0)
+    pca = PCA(n_components=3)
+    pca.fit(vertices - centroid)
+    normal = pca.components_[-1]  # Last component is the normal (least variance)
+    basis_x = pca.components_[0]  # First principal component (highest variance)
+    basis_y = np.cross(normal, basis_x)  # Second basis vector
+    projected_vertices = np.array(
+        [
+            [np.dot(v - centroid, basis_x), np.dot(v - centroid, basis_y)]
+            for v in vertices
+        ]
+    )
+    # Compute area using the shoelace formula
+    n = len(projected_vertices)
+    area = 0.0
+    for i in range(n):
+        j = (i + 1) % n
+        area += vertices[i][0] * vertices[j][1]
+        area -= vertices[j][0] * vertices[i][1]
+    area = abs(area) / 2.0
+    return area, centroid
+
+
 def get_boundary_edges(mesh):
     """Get the boundary edges (edges that belong to only one triangle)."""
     triangles = np.asarray(mesh.triangles)
@@ -187,8 +249,14 @@ def visualize_mesh_with_edges(mesh):
     point_cloud = o3d.geometry.PointCloud()
     point_cloud.points = mesh.vertices
     point_cloud.paint_uniform_color([0, 0, 1])  # Blue points
+    # Create reference frame
+    mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
+        size=0.2, origin=[0, 0, 0]
+    )
     # Show everything
-    o3d.visualization.draw_geometries([mesh, line_set, point_cloud, boundary_line_set])
+    o3d.visualization.draw_geometries(
+        [mesh, line_set, point_cloud, boundary_line_set, mesh_frame]
+    )
 
 
 def generate_boundary_polygons(boundary, nodes):

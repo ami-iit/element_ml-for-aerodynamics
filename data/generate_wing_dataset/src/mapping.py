@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
-from scipy.sparse import lil_matrix, csr_matrix, coo_array, csr_array, find
+from scipy.sparse import lil_matrix, diags
 from scipy.sparse.linalg import spsolve
 
 
@@ -83,9 +83,6 @@ def compute_unit_square(n):
         ys = np.linspace(start[1], end[1], count, endpoint=False)
         edge_points = np.stack((xs, ys), axis=1)
         points.append(edge_points)
-
-    # Close the loop with the last corner
-    points.append(np.array([[0, 0]]))  # ensures the last point is corner (0,0)
 
     return np.vstack(points)
 
@@ -261,6 +258,56 @@ def compute_elastic_equilibrium_planar_map(
     u = spsolve(K, gx)
     v = spsolve(K, gy)
     new_points = np.column_stack((u, v))
+    return new_points
+
+
+def minimize_avg_edge_length_from_adj_list(adj_list, boundary_nodes):
+    """
+    adj_list: list of lists where adj_list[i] contains indices of neighbors of node i
+    points: (N, 2) array of initial positions
+    boundary_indices: list or array of indices of boundary (fixed) nodes
+    """
+    N = len(adj_list)
+
+    # Convert boundary indices to a boolean mask
+    boundary_mask = np.zeros(N, dtype=bool)
+    boundary_mask[boundary_nodes] = True
+
+    # Build sparse adjacency matrix
+    adjacency = lil_matrix((N, N))
+    for i, neighbors in enumerate(adj_list):
+        for j in neighbors:
+            adjacency[i, j] = 1
+            adjacency[j, i] = 1  # Ensure symmetry
+
+    # Construct Laplacian: L = D - A
+    degrees = np.array([len(neighbors) for neighbors in adj_list])
+    L = diags(degrees) - adjacency.tocsr()
+
+    # Identify free and fixed nodes
+    free_nodes = np.where(~boundary_mask)[0]
+    fixed_nodes = np.where(boundary_mask)[0]
+
+    # Partition the Laplacian
+    L_ff = L[free_nodes][:, free_nodes]
+    L_fb = L[free_nodes][:, fixed_nodes]
+    x_fixed = compute_unit_square(len(boundary_nodes))
+
+    # Right-hand sides
+    x_rhs = -L_fb @ x_fixed[:, 0]
+    y_rhs = -L_fb @ x_fixed[:, 1]
+
+    # Solve linear systems
+    x_free = spsolve(L_ff, x_rhs)
+    y_free = spsolve(L_ff, y_rhs)
+
+    # Update point positions
+    new_points = np.zeros((N, 2))
+    new_points[free_nodes, 0] = x_free
+    new_points[free_nodes, 1] = y_free
+    new_points[fixed_nodes, 0] = x_fixed[:, 0]
+    new_points[fixed_nodes, 1] = x_fixed[:, 1]
+
     return new_points
 
 
