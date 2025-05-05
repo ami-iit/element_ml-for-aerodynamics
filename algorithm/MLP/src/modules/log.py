@@ -5,6 +5,7 @@ Description: Module for logging data and output
 """
 
 import wandb
+import torch
 import sys
 import numpy as np
 
@@ -39,9 +40,11 @@ def log_aerodynamic_forces_error(
     aero_force_errors = np.zeros((len(dataset_list), 3))
     for i, sim in enumerate(dataset_list):
         # Get input: v_x, v_y, v_z, x, y, z
-        input = sim[:, Const.vel_idx + Const.pos_idx].float().to(device)
+        # input = sim[:, Const.vel_idx + Const.pos_idx].float().to(device)
+        input = sim[:, Const.vel_idx + Const.pos_idx]
         input[:, :3] /= scaling[0]
         input[:, 3:] = (input[:, 3:] - scaling[1]) / (scaling[2] - scaling[1])
+        input = torch.tensor(input, dtype=torch.float32).to(device)
         # Compute forward pass
         model.to(device)
         model.eval()
@@ -52,14 +55,14 @@ def log_aerodynamic_forces_error(
         fric_coeff = output[:, 1:]
         # Compute predicted centroidal aerodynamic force
         dyn_press = 0.5 * 1.225 * 17.0**2
-        face_normals = sim[:, Const.face_normal_idx].float()
-        areas = sim[:, Const.area_idx].float()
-        pressure = press_coeff * dyn_press
+        face_normals = sim[:, Const.face_normal_idx]
+        areas = sim[:, Const.area_idx]
+        pressure = press_coeff.reshape(-1, 1) * dyn_press
         friction = fric_coeff * dyn_press
         d_force = pressure * face_normals * areas + friction * areas
         pred_aero_force = np.sum(d_force, axis=0)
         # Compute dataset aerodynamic force
-        pressure = sim[:, Const.flow_idx[0]] * dyn_press
+        pressure = sim[:, Const.flow_idx[0]].reshape(-1, 1) * dyn_press
         friction = sim[:, Const.flow_idx[1:]] * dyn_press
         d_force = pressure * face_normals * areas + friction * areas
         dataset_aero_force = np.sum(d_force, axis=0)
