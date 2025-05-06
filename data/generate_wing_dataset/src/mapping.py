@@ -116,73 +116,6 @@ def circular_map_to_square(map):
     return np.column_stack((theta, r))
 
 
-def redistribute_points_with_constrain(
-    points,
-    boundary_nodes,
-    num_iterations=50,
-    step_size=0.05,
-    adj_list=None,
-):
-    """
-    Redistribute points by combining a density-based force (via KDE) and
-    a distance-preservation force (keeping originally close points nearby).
-
-    Parameters
-    ----------
-    points : ndarray, shape (n_samples, 2)
-        The initial 2D coordinates of the points.
-    bandwidth : float
-        Bandwidth for the Kernel Density Estimator.
-    num_iterations : int
-        Number of iterations for the update.
-    step_size : float
-        Step size for each update.
-    alpha : float
-        Weight for the density-based force.
-    beta : float
-        Weight for the distance-preservation force.
-    k_neighbors : int
-        Number of nearest neighbors (based on the original configuration)
-        to consider for preserving distances.
-
-    Returns
-    -------
-    points : ndarray, shape (n_samples, 2)
-        The redistributed points after the iterations.
-    """
-    points = points.copy()
-    original_points = points.copy()
-
-    # Main iterative update
-    for it in range(num_iterations):
-        new_points = np.zeros_like(points)
-
-        for i, pt in enumerate(points):
-            # --- 1. Compute Distance Preservation Force ---
-            distance_force = np.zeros(2)
-            # For each neighbor, compute how far the current distance deviates.
-            for j in adj_list[i]:
-                d_vec = pt - points[j]
-                # The force is proportional to (current_distance - original_distance)
-                # and acts in the direction of d_vec (normalized).
-                distance_force += d_vec
-
-            # --- 2. Update the Point ---
-            distance_force /= len(adj_list[i])
-            new_points[i] = pt - step_size * distance_force
-
-        points = new_points.copy()
-        # Keep boundary nodes fixed
-        for node in boundary_nodes:
-            points[node] = original_points[node]
-        print(
-            f"Redistribution progress: {it + 1}/{num_iterations}",
-            end="\r",
-            flush=True,
-        )
-    return points
-
-
 def plot_planar_map(nodes, faces):
     fig, ax = plt.subplots()
     plt.grid(True)
@@ -258,56 +191,6 @@ def compute_elastic_equilibrium_planar_map(
     u = spsolve(K, gx)
     v = spsolve(K, gy)
     new_points = np.column_stack((u, v))
-    return new_points
-
-
-def minimize_avg_edge_length_from_adj_list(adj_list, boundary_nodes):
-    """
-    adj_list: list of lists where adj_list[i] contains indices of neighbors of node i
-    points: (N, 2) array of initial positions
-    boundary_indices: list or array of indices of boundary (fixed) nodes
-    """
-    N = len(adj_list)
-
-    # Convert boundary indices to a boolean mask
-    boundary_mask = np.zeros(N, dtype=bool)
-    boundary_mask[boundary_nodes] = True
-
-    # Build sparse adjacency matrix
-    adjacency = lil_matrix((N, N))
-    for i, neighbors in enumerate(adj_list):
-        for j in neighbors:
-            adjacency[i, j] = 1
-            adjacency[j, i] = 1  # Ensure symmetry
-
-    # Construct Laplacian: L = D - A
-    degrees = np.array([len(neighbors) for neighbors in adj_list])
-    L = diags(degrees) - adjacency.tocsr()
-
-    # Identify free and fixed nodes
-    free_nodes = np.where(~boundary_mask)[0]
-    fixed_nodes = np.where(boundary_mask)[0]
-
-    # Partition the Laplacian
-    L_ff = L[free_nodes][:, free_nodes]
-    L_fb = L[free_nodes][:, fixed_nodes]
-    x_fixed = compute_unit_square(len(boundary_nodes))
-
-    # Right-hand sides
-    x_rhs = -L_fb @ x_fixed[:, 0]
-    y_rhs = -L_fb @ x_fixed[:, 1]
-
-    # Solve linear systems
-    x_free = spsolve(L_ff, x_rhs)
-    y_free = spsolve(L_ff, y_rhs)
-
-    # Update point positions
-    new_points = np.zeros((N, 2))
-    new_points[free_nodes, 0] = x_free
-    new_points[free_nodes, 1] = y_free
-    new_points[fixed_nodes, 0] = x_fixed[:, 0]
-    new_points[fixed_nodes, 1] = x_fixed[:, 1]
-
     return new_points
 
 

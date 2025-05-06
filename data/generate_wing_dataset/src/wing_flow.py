@@ -126,8 +126,9 @@ class FlowImporter:
         return
 
     def import_mesh(self, nodes, faces):
-        self.nodes = nodes
-        self.faces = faces
+        mesh = ms.create_mesh_from_faces_split(nodes, faces)
+        self.nodes = np.asarray(mesh.vertices)
+        self.faces = np.asarray(mesh.triangles)
         # Compute face normals and areas
         self.face_normals = np.zeros((len(self.faces), 3))
         self.face_areas = np.zeros(len(self.faces))
@@ -248,8 +249,10 @@ class FlowGenerator:
         return
 
     def import_mesh(self, nodes, faces):
-        self.nodes = self.points
-        self.faces = faces
+        mesh = ms.create_mesh_from_faces_split(nodes, faces)
+        self.faces = np.asarray(mesh.triangles)
+        self.nodes = np.asarray(mesh.vertices)
+        # self.nodes = self.points
         # Compute face normals and areas
         self.face_normals = np.zeros((len(self.faces), 3))
         self.face_areas = np.zeros(len(self.faces))
@@ -312,6 +315,56 @@ class FlowVisualizer:
         o3d.visualization.draw_geometries(
             [pcd], zoom=zoom, lookat=center, front=front, up=up, window_name=window_name
         )
+        return
+
+    def plot_wing_pressure_error(self, cp_error, window_name="Open3D"):
+        # Normalize the colormap
+        norm = Normalize(vmin=0, vmax=1)
+        normalized_flow_variable = norm(cp_error)
+        colormap = cm.jet
+        colors = colormap(normalized_flow_variable)[:, :3]
+        # Create the point cloud
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(self.points)
+        pcd.colors = o3d.utility.Vector3dVector(colors)
+        # Set visualization parameters
+        zoom = 0.5
+        x_cen = (self.points[:, 0].max() + self.points[:, 0].min()) / 2
+        y_cen = (self.points[:, 1].max() + self.points[:, 1].min()) / 2
+        z_cen = (self.points[:, 2].max() + self.points[:, 2].min()) / 2
+        center = [x_cen, y_cen, z_cen]
+        front = [-1.0, -1.0, 1.0]
+        up = [0.0, 0.0, 1.0]
+        # Display the pointcloud
+        o3d.visualization.draw_geometries(
+            [pcd], zoom=zoom, lookat=center, front=front, up=up, window_name=window_name
+        )
+        return
+
+    def plot_pressure_contour(self):
+        # Normalize the colormap
+        norm = Normalize(vmin=-2, vmax=1)
+        normalized_flow_variable = norm(self.cp)
+        colormap = cm.jet
+        colors = colormap(normalized_flow_variable)[:, :3]
+        # Create the point cloud
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(self.points)
+        pcd.colors = o3d.utility.Vector3dVector(colors)
+        # Create the global frame
+        world_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
+            size=0.2, origin=[0, 0, 0]
+        )
+        # Assemble the geometries list
+        geometries = [
+            {"name": "world_frame", "geometry": world_frame},
+        ]
+        # Add meshes to the geometries list
+        mesh = ms.create_mesh_from_faces_split(self.nodes, self.faces)
+        mesh.vertex_colors = o3d.utility.Vector3dVector(colors)
+        geometries.append({"name": f"wing", "geometry": mesh})
+
+        o3d.visualization.draw(geometries, show_skybox=False)
         return
 
     def plot_2D_latent_space_projections(self, input, latent_space):

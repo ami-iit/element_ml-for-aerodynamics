@@ -10,23 +10,23 @@ from matplotlib import pyplot as plt
 
 from src.wing_flow import FlowImporter
 
-IM_RES = (256, 256)
+IM_RES = (64, 64)
 DENSITY_EXP = 3
 
 
 def main():
+    root = Path(__file__).parents[0]
     # Initialize flow object
     flow = FlowImporter()
     # Create a dataset output directory if not existing
-    dataset_dir = Path(__file__).parents[0] / "dataset"
+    dataset_dir = root / "dataset"
     dataset_dir.mkdir(parents=True, exist_ok=True)
     # Import and set mesh mapping
-    map_dir = Path(__file__).parents[0] / "maps"
-    map_file = list(map_dir.rglob(f"S_0-map-eem-{DENSITY_EXP}.npy"))[0]
+    map_file = root / "maps" / f"S_0-map-eem-{DENSITY_EXP}.npy"
     map_data = np.load(map_file, allow_pickle=True).item()
     flow.import_mapping(map_data)
     # Get the path to the raw data
-    data_dir = Path(__file__).parents[0] / "simulations"
+    data_dir = root / "simulations"
     files = [file for file in data_dir.rglob("*.vtu") if file.is_file()]
     # Initialize dataset variables
     database = np.empty(shape=(len(files), 7, IM_RES[0], IM_RES[1]), dtype=np.float32)
@@ -52,10 +52,10 @@ def main():
     }
     # Save compressed dataset using compressed numpy
     with open(
-        str(dataset_dir / f"wing-images-{IM_RES[0]}-eem-{DENSITY_EXP}.npz"), "wb"
+        str(dataset_dir / f"wing-images-{IM_RES[0]}-{DENSITY_EXP}.npz"), "wb"
     ) as f:
         pickle.dump(dataset, f, protocol=4)
-    print(f"Nodal image dataset for wings saved.")
+    print(f"Image dataset for wings saved.")
 
     ## Testing
     n_sim = len(files)
@@ -71,11 +71,10 @@ def main():
         for idx, title in enumerate(titles):
             ax = axes[idx // 4, idx % 4]
             image = database[i, idx, :, :]
-            last_im = ax.imshow(image, origin="lower", cmap="jet")
+            ax.imshow(image, origin="lower", cmap="jet")
             ax.set_title(title)
             ax.set_xlim([-10, IM_RES[1] + 10])
             ax.set_ylim([-10, IM_RES[0] + 10])
-            # fig.colorbar(last_im, ax=ax)
     plt.show()
 
 
