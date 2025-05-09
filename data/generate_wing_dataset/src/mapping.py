@@ -216,7 +216,6 @@ def compute_weighted_stiffness_matrix(adj_list, densities, density_exp=1.0):
     """
     Compute stiffness matrix with weights inversely proportional to local density.
     """
-    from scipy.sparse import lil_matrix
 
     n_nodes = len(adj_list)
     K_global = lil_matrix((n_nodes, n_nodes))
@@ -231,8 +230,29 @@ def compute_weighted_stiffness_matrix(adj_list, densities, density_exp=1.0):
     return K_global.tocsr()
 
 
+def compute_edge_weighted_stiffness_matrix(adj_list, edge_values, density_exp=1.0):
+    """
+    Compute stiffness matrix with weights inversely proportional to local density.
+    """
+
+    n_nodes = len(adj_list)
+    K_global = lil_matrix((n_nodes, n_nodes))
+
+    for i in range(n_nodes):
+        for j, val in zip(adj_list[i], edge_values[i]):
+            weight = 1 - val  # spring stiffness
+            K_global[i, j] -= weight**density_exp
+            K_global[i, i] += weight**density_exp
+    return K_global.tocsr()
+
+
 def redistribute_points_with_equilibrium_constrain_density(
-    points, boundary_nodes, adj_list, density_exp=1.0
+    points,
+    boundary_nodes,
+    adj_list,
+    edge_deltas=None,
+    density_exp=0.0,
+    strategy="mesh-based",
 ):
     x = points[:, 0]
     y = points[:, 1]
@@ -241,7 +261,12 @@ def redistribute_points_with_equilibrium_constrain_density(
     densities = compute_local_density(points, adj_list)
 
     # Step 2: Compute stiffness matrix with density-based weights
-    K = compute_weighted_stiffness_matrix(adj_list, densities, density_exp).tolil()
+    if strategy == "density-based":
+        K = compute_weighted_stiffness_matrix(adj_list, densities, density_exp).tolil()
+    elif strategy == "mesh-based":
+        K = compute_edge_weighted_stiffness_matrix(
+            adj_list, edge_deltas, density_exp
+        ).tolil()
 
     # Step 3: Apply boundary conditions
     gx = np.zeros_like(x)
@@ -259,3 +284,27 @@ def redistribute_points_with_equilibrium_constrain_density(
     new_points = np.column_stack((u, v))
 
     return new_points
+
+
+def compute_norm_edge_lengths(vertices, adj_list):
+    edge_lengths = []
+    avg_length = 0.0
+    max_length = 0.0
+    min_length = np.inf
+    n_edges = 0
+    for i in range(len(adj_list)):
+        ith_edge_lengths = []
+        for j in adj_list[i]:
+            dist = np.linalg.norm(vertices[i] - vertices[j])
+            max_length = max(max_length, dist)
+            min_length = min(min_length, dist)
+            avg_length += dist
+            n_edges += 1
+            ith_edge_lengths.append(dist)
+        edge_lengths.append(ith_edge_lengths)
+    avg_length /= n_edges
+    # Normalize edge lengths to the average length
+    for i in range(len(edge_lengths)):
+        for j in range(len(edge_lengths[i])):
+            edge_lengths[i][j] = edge_lengths[i][j] / max_length
+    return edge_lengths
