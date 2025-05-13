@@ -29,7 +29,7 @@ def main():
     # Get configuration names and joint configurations
     files = [file.name for file in data_path.rglob("*.dtbs") if file.is_file()]
     configs = sorted(list(set([file.split("-")[0] for file in files])))
-    joint_config_file = list(data_path.rglob("joint-configurations.csv"))[0]
+    joint_config_file = list(data_path.parent.rglob("joint-configurations.csv"))[0]
     joint_configs = np.genfromtxt(joint_config_file, delimiter=",", dtype=str)
 
     # Start the cycle on configurations
