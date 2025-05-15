@@ -165,10 +165,11 @@ def main():
         # Define the objective function
         def objective(trial):
             print(f"Optuna trial: {Const.optuna_trial}/{Const.n_trials}")
-            # Const.lr = trial.suggest_float("lr", 1e-4, 1e-2)
-            # Const.reg_par = trial.suggest_float("reg_par", 1e-9, 1e-5)
-            Const.hid_layers = trial.suggest_int("hid_layers", 5, 7)
-            hid_dim_pow = trial.suggest_int("hid_dim_pow", 8, 10)
+            Const.batch_size = trial.suggest_int("batch_size", 50000, 500000)
+            Const.initial_lr = trial.suggest_float("initial_lr", 1e-4, 1e-2)
+            Const.reg_par = trial.suggest_float("reg_par", 1e-9, 1e-5)
+            Const.hid_layers = trial.suggest_int("hid_layers", 4, 12)
+            hid_dim_pow = trial.suggest_int("hid_dim_pow", 7, 9)
             Const.hid_dim = int(2**hid_dim_pow)
             # Define the MLP model
             model = mod.MLP().to(device)
@@ -178,7 +179,7 @@ def main():
             loss = torch.nn.MSELoss()
             # Define optimizer
             optimizer = torch.optim.Adam(
-                model.parameters(), lr=Const.lr, weight_decay=Const.reg_par
+                model.parameters(), lr=Const.initial_lr, weight_decay=Const.reg_par
             )
             # Print model summary
             print("Model summary")
