@@ -43,14 +43,20 @@ def log_aerodynamic_forces_error(
         # input = sim[:, Const.vel_idx + Const.pos_idx].float().to(device)
         input = sim[:, Const.vel_idx + Const.pos_idx]
         input[:, :3] /= scaling[0]
-        input[:, 3:] = (input[:, 3:] - scaling[1]) / (scaling[2] - scaling[1])
+        if Const.scale_mode == "minmax":
+            input[:, 3:] = (input[:, 3:] - scaling[1]) / (scaling[2] - scaling[1])
+        elif Const.scale_mode == "standard":
+            input[:, 3:] = (input[:, 3:] - scaling[1]) / scaling[2]
         input = torch.tensor(input, dtype=torch.float32).to(device)
         # Compute forward pass
         model.to(device)
         model.eval()
         output = model(input).detach().cpu().numpy()
         # Rescale output
-        output = output * (scaling[4] - scaling[3]) + scaling[3]
+        if Const.scale_mode == "minmax":
+            output = output * (scaling[4] - scaling[3]) + scaling[3]
+        elif Const.scale_mode == "standard":
+            output = output * scaling[4] + scaling[3]
         press_coeff = output[:, 0]
         fric_coeff = output[:, 1:]
         # Compute predicted centroidal aerodynamic force
