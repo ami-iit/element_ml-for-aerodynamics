@@ -25,11 +25,11 @@ def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
 
     if Const.lr_scheduler == "linear":
         scheduler = optim.lr_scheduler.LinearLR(
-            optimizer, start_factor=1.0, end_factor=1e-3, total_iters=1e4
+            optimizer, start_factor=1.0, end_factor=1e-3, total_iters=Const.lr_iters
         )
     elif Const.lr_scheduler == "plateau":
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode="min", factor=0.5, patience=Const.lr_patience, verbose=True
+            optimizer, mode="min", factor=0.5, patience=Const.lr_patience
         )
 
     print("\nStarting the training \n")
@@ -60,9 +60,6 @@ def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
             train_loss_avg[-1] += train_loss.item()
             num_batches_train += 1
 
-        # Update learning rate
-        scheduler.step() if Const.lr_scheduler else None
-
         model.eval()
         val_loss_avg.append(0)
         num_batches_val = 0
@@ -82,10 +79,17 @@ def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
             best_epoch = epoch
             min_val_loss = val_loss_avg[-1]
 
+        # Update learning rate
+        if Const.lr_scheduler == "linear":
+            if epoch < Const.lr_iters:
+                scheduler.step()
+        elif Const.lr_scheduler == "plateau":
+            scheduler.step(val_loss_avg[-1])
+
         time_end = time.time()
         outputs.append((epoch, train_loss_avg[-1], val_loss_avg[-1]))
         print(
-            f"Epoch {epoch+1}/{Const.epochs}: Train loss: {train_loss_avg[-1]:5f}, Val loss: {val_loss_avg[-1]:.5f}, iter time: {time_end - time_start:.2f} s"
+            f"Epoch {epoch+1}/{Const.epochs}: Train loss: {train_loss_avg[-1]:5f}, Val loss: {val_loss_avg[-1]:.5f}, lr: , iter time: {time_end - time_start:.2f} s"
         )
 
         epoch = epoch + 1

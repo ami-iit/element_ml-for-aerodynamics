@@ -29,8 +29,9 @@ class Const:
         self.test_set = 0
         self.batch_size = 1000
         self.epochs = 1000
-        self.initial_lr = 1e-3
         self.lr_scheduler = None
+        self.initial_lr = 1e-3
+        self.lr_iters = 10000
         self.lr_patience = 50
         self.reg_par = 1e-6
         self.vel_idx = [0, 1, 2]
