@@ -50,6 +50,14 @@ class Run:
         self.val_ids = [val_id for val_id in val_ids if val_id is not None]
         print("Model loaded.")
 
+    def load_local_model(self, model_path: str):
+        # Get model
+        self.model = torch.jit.load(model_path / "scripted_model.pt").to(self.device)
+        self.model.eval()
+        # Get scaling parameters
+        scaling_dict = np.load(model_path / "scaling.npy", allow_pickle=True).all()
+        self.scaling = [scaling_dict[idx] for idx in scaling_dict.keys()]
+
     def load_dataset(self, datafile_path: str):
         print(f"Loading dataset from: {datafile_path}")
         datafile = np.load(datafile_path, allow_pickle=True)
@@ -58,7 +66,7 @@ class Run:
         self.yaw_angles = np.array(datafile["data"].tolist()["yaw_angles"])
         print("Dataset loaded.")
 
-    def scale_dataset(self):
+    def scale_dataset_minmax(self):
         # WARNING: Don't use this method (referencing problems can occur!)
         dtbs = self.dataset
         for sample in range(len(self.dataset)):
@@ -70,7 +78,7 @@ class Run:
                 dtbs[sample][:, Const.flow_idx] - self.scaling[3]
             ) / (self.scaling[4] - self.scaling[3])
         self.scaled_database = dtbs
-        print("Dataset loaded.")
+        print("Dataset scaled.")
 
     def visualize_pointcloud(self, points, values, window_name="Open3D"):
         # Normalize the colormap
@@ -92,7 +100,7 @@ class Run:
         y_cen = (points[:, 1].max() + points[:, 1].min()) / 2
         z_cen = (points[:, 2].max() + points[:, 2].min()) / 2
         center = [x_cen, y_cen, z_cen]
-        front = [1.0, -1.0, 1.0]
+        front = [1.0, 0.0, 1.0]
         up = [0.0, 1.0, 0.0]
         # Display the pointcloud
         o3d.visualization.draw_geometries(
@@ -104,7 +112,7 @@ class Run:
             window_name=window_name,
         )
 
-    def compute_aerodynamic_forces(self, wind_speed: float):
+    def compute_aerodynamic_forces(self, wind_speed: float, scale_mode: str = "minmax"):
         dyn_press = 0.5 * 1.225 * wind_speed**2
         self.aero_force_errors = np.zeros((len(self.dataset), 3))
         self.aero_forces_in = np.zeros((len(self.dataset), 3))
@@ -113,15 +121,21 @@ class Run:
             # Get input: v_x, v_y, v_z, x, y, z
             input = sim[:, Const.vel_idx + Const.pos_idx]
             input[:, :3] /= self.scaling[0]
-            input[:, 3:] = (input[:, 3:] - self.scaling[1]) / (
-                self.scaling[2] - self.scaling[1]
-            )
+            if scale_mode == "minmax":
+                input[:, 3:] = (input[:, 3:] - self.scaling[1]) / (
+                    self.scaling[2] - self.scaling[1]
+                )
+            elif scale_mode == "standard":
+                input[:, 3:] = (input[:, 3:] - self.scaling[1]) / self.scaling[2]
             input = torch.tensor(input, dtype=torch.float32).to(self.device)
             # Compute forward pass
             self.model.to(self.device)
             self.model.eval()
             output = self.model(input).detach().cpu().numpy()
-            output = output * (self.scaling[4] - self.scaling[3]) + self.scaling[3]
+            if scale_mode == "minmax":
+                output = output * (self.scaling[4] - self.scaling[3]) + self.scaling[3]
+            elif scale_mode == "standard":
+                output = output * self.scaling[2] + self.scaling[1]
             press_coeff = output[:, 0]
             fric_coeff = output[:, 1:]
             # Compute predicted centroidal aerodynamic force

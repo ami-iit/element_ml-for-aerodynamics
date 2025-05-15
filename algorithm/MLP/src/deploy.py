@@ -7,31 +7,17 @@ Description:    Main module to execute the training of the Multi-Layer
 """
 
 import numpy as np
-import sys
 import torch
-import torch.nn as nn
-import torch.onnx
-import torch.jit
-from torch.utils.data import DataLoader
 import random as random
 import time as time
-import torchsummary
-import optuna
-from optuna.trial import TrialState
-import wandb
 from pathlib import Path
 
-from modules import preprocess as pre
-from modules import models as mod
-from modules import train as train
-from modules import output as out
-from modules import log
 from modules.constants import Const
 
 from modules.run import Run
 
-RUN_NAME = "trial-3"
-PITCH = 90.0
+RUN_NAME = "trial-9"
+PITCH = 40.0
 YAW = 0.0
 WIND_SPEED = 17.0
 
@@ -42,23 +28,25 @@ def main():
 
     # Set the database path
     dataset_dir = root / "test_cases" / "ironcub" / "database"
-    dataset_file = dataset_dir / "ironcub-hovering.npz"
+    dataset_file = dataset_dir / "ironcub-hovering-old.npz"
 
     # Initialize the run object
     run = Run()
-    run.load_train_from_wandb("ami-iit/MLP-iRonAero", RUN_NAME)
+    if RUN_NAME == "trial-9":
+        run.load_local_model(root.parents[2] / "artifacts" / "model-v9")
+    else:
+        run.load_train_from_wandb("ami-iit/MLP-iRonAero", RUN_NAME)
     run.load_dataset(dataset_file)
 
     # Compute aerodynamic forces MSE
-    run.compute_aerodynamic_forces(WIND_SPEED)
-    print(f"Database aerodynamic force: {run.aero_forces_in[sample]}")
-    print(f"Predicted aerodynamic force: {run.aero_forces_out[sample]}")
+    run.compute_aerodynamic_forces(WIND_SPEED, "minmax")
 
     # Visualization
     # Compute dataset sample
     sample = np.where((run.pitch_angles == PITCH) & (run.yaw_angles == YAW))[0][0]
     points = run.dataset[sample][:, Const.pos_idx]
     values = run.dataset[sample][:, Const.flow_idx[0]]
+    print(f"Database aerodynamic force: {run.aero_forces_in[sample]}")
     # Compute prediction with the model using scaled input
     input_vel = run.dataset[sample][:, Const.vel_idx] / run.scaling[0]
     input_pos = (points - run.scaling[1]) / (run.scaling[2] - run.scaling[1])
@@ -67,6 +55,7 @@ def main():
     output = run.model(input)
     output = output.cpu().detach().numpy()
     output = output * (run.scaling[4] - run.scaling[3]) + run.scaling[3]
+    print(f"Predicted aerodynamic force: {run.aero_forces_out[sample]}")
     # Visualize pointclouds from the database and the prediction
     run.visualize_pointcloud(points, values, window_name="database sample")
     run.visualize_pointcloud(points, output[:, 0], window_name="MLP prediction")
