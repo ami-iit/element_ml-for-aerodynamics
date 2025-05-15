@@ -35,10 +35,8 @@ def main():
     for idx, file in enumerate(files):
         sweep = float(file.parent.parent.stem.split("_")[-1])
         aoa = float(file.parent.stem.split("_")[-1])
-        # Import solution data
+        # Data Import, Interpolation, and Image Generation
         flow.import_solution_data(file)
-        # flow.reorder_data()
-        # Data Interpolation and Image Generation
         flow.interp_3d_to_image(IM_RES)
         database[idx, :, :, :] = flow.image
         sweep_angles.append(sweep)

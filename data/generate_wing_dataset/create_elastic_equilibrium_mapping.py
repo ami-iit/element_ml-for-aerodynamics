@@ -15,7 +15,7 @@ import src.mesh as ms
 import src.mapping as mp
 
 REDISTRIBUTION_STRATEGY = "mesh-based"  ## "mesh-based" or "density-based"
-DENSITY_EXP = 0
+DENSITY_EXP = 4
 ITER_NUM = 100  # Number of iterations for redistribution
 BOUNDARY_SHAPE = "square"
 SHOW_PLOTS = True
@@ -63,7 +63,7 @@ def main():
         map2d = mp.compute_elastic_equilibrium_planar_map(
             boundary_nodes, adj_list, boundary_shape=BOUNDARY_SHAPE
         )
-        # mp.plot_planar_map(map2d, faces) if SHOW_PLOTS else None
+        mp.plot_planar_map(map2d, faces) if SHOW_PLOTS else None
 
         # Redistribution algorithm
         # 1. Mesh-based redistribution

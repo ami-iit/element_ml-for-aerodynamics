@@ -12,7 +12,7 @@ from src.wing_flow import FlowGenerator, FlowVisualizer
 IM_RES = (256, 256)
 DENSITY_EXP = 1
 
-AOA = 11.0
+AOA = 0.0
 SWEEP = 10.0
 
 
@@ -33,13 +33,13 @@ def main():
     # Initialize interpolator
     flow.compute_interpolator(images.shape[2:])
     # Import the trained models
-    model_path = root / "training" / "Out_1"
+    model_path = root / "training" / f"{DENSITY_EXP}"
     flow.load_models(
         encoder_path=str(model_path / "scripted_enc.pt"),
         decoder_path=str(model_path / "scripted_dec.pt"),
     )
     # Load the RBF mapping
-    rbf_file = root / "training" / "rbf" / "rbf_data_1.npy"
+    rbf_file = root / "training" / "rbf" / f"rbf_data_{DENSITY_EXP}.npy"
     rbf_data = np.load(rbf_file, allow_pickle=True).item()
     flow.rbf_centers = rbf_data["centers"]
     flow.rbf_weights = rbf_data["weights"]
