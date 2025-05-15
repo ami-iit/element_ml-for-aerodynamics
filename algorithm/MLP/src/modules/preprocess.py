@@ -82,21 +82,32 @@ def set_seed(seed: int = 42) -> None:
 
 def compute_scaling(data):
     max_wind_speed = np.max(np.abs(data[:, Const.vel_idx]))
-    X_min = np.min(data[:, Const.pos_idx], axis=0)
-    X_max = np.max(data[:, Const.pos_idx], axis=0)
-    Y_min = np.min(data[:, Const.flow_idx], axis=0)
-    Y_max = np.max(data[:, Const.flow_idx], axis=0)
-    return max_wind_speed, X_min, X_max, Y_min, Y_max
+    if Const.scale_mode == "minmax":
+        X_min = np.min(data[:, Const.pos_idx], axis=0)
+        X_max = np.max(data[:, Const.pos_idx], axis=0)
+        Y_min = np.min(data[:, Const.flow_idx], axis=0)
+        Y_max = np.max(data[:, Const.flow_idx], axis=0)
+        return max_wind_speed, X_min, X_max, Y_min, Y_max
+    elif Const.scale_mode == "standard":
+        X_mean = np.mean(data[:, Const.pos_idx], axis=0)
+        X_std = np.std(data[:, Const.pos_idx], axis=0)
+        Y_mean = np.mean(data[:, Const.flow_idx], axis=0)
+        Y_std = np.std(data[:, Const.flow_idx], axis=0)
+        return max_wind_speed, X_mean, X_std, Y_mean, Y_std
 
 
 def scale_dataset(data, scaling):
     data[:, Const.vel_idx] /= scaling[0]
-    data[:, Const.pos_idx] = (data[:, Const.pos_idx] - scaling[1]) / (
-        scaling[2] - scaling[1]
-    )
-    data[:, Const.flow_idx] = (data[:, Const.flow_idx] - scaling[3]) / (
-        scaling[4] - scaling[3]
-    )
+    if Const.scale_mode == "minmax":
+        data[:, Const.pos_idx] = (data[:, Const.pos_idx] - scaling[1]) / (
+            scaling[2] - scaling[1]
+        )
+        data[:, Const.flow_idx] = (data[:, Const.flow_idx] - scaling[3]) / (
+            scaling[4] - scaling[3]
+        )
+    elif Const.scale_mode == "standard":
+        data[:, Const.pos_idx] = (data[:, Const.pos_idx] - scaling[1]) / scaling[2]
+        data[:, Const.flow_idx] = (data[:, Const.flow_idx] - scaling[3]) / scaling[4]
     return data
 
 

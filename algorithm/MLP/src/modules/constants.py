@@ -23,6 +23,7 @@ class Const:
         self.run_name = None
         # training parameters
         self.mode = "mlp"
+        self.scale_mode = "standard"
         self.rnd_seed = None
         self.val_set = 15
         self.test_set = 0
