@@ -6,6 +6,7 @@ Description:    Module for training the learning algorithm.
 
 import time
 import wandb
+import torch.optim as optim
 
 from modules.constants import Const
 
@@ -21,6 +22,15 @@ def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
 
     start_time = time.time()
     min_val_loss = 1e6
+
+    if Const.lr_scheduler == "linear":
+        scheduler = optim.lr_scheduler.LinearLR(
+            optimizer, start_factor=1.0, end_factor=1e-3, total_iters=1e4
+        )
+    elif Const.lr_scheduler == "plateau":
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode="min", factor=0.5, patience=Const.lr_patience, verbose=True
+        )
 
     print("\nStarting the training \n")
     while not stop_train:
@@ -49,6 +59,9 @@ def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
             # Update loss
             train_loss_avg[-1] += train_loss.item()
             num_batches_train += 1
+
+        # Update learning rate
+        scheduler.step() if Const.lr_scheduler else None
 
         model.eval()
         val_loss_avg.append(0)

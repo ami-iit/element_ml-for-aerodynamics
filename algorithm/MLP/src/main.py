@@ -1,7 +1,7 @@
 """
 Author: Antonello Paolino
 Date: 2025-01-31
-Description:    Main module to execute the training of the Multi-Layer 
+Description:    Main module to execute the training of the Multi-Layer
                 Perceptron for Aerodynamics prediction of iRonCub surface
                 flow variables (MLP-Aero).
 """
@@ -112,7 +112,7 @@ def main():
         loss = torch.nn.MSELoss()
         # Define optimizer
         optimizer = torch.optim.Adam(
-            model.parameters(), lr=Const.lr, weight_decay=Const.reg_par
+            model.parameters(), lr=Const.initial_lr, weight_decay=Const.reg_par
         )
 
         # Print model summary
