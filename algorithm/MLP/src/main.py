@@ -208,7 +208,7 @@ def main():
             if Const.wandb_logging:
                 wandb.log(
                     {
-                        "lr": Const.lr,
+                        "lr": Const.initial_lr,
                         "reg_par": Const.reg_par,
                         "hid_layers": Const.hid_layers,
                         "hid_dim": Const.hid_dim,
