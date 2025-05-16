@@ -11,7 +11,8 @@ from matplotlib import pyplot as plt
 from src.wing_flow import FlowImporter
 
 IM_RES = (64, 64)
-DENSITY_EXP = 3
+DENSITY_EXP = 0
+MIRROR_DATA = True
 
 
 def main():
@@ -42,6 +43,24 @@ def main():
         sweep_angles.append(sweep)
         angles_of_attack.append(aoa)
         print(f"Generation progress: {idx+1}/{len(files)}", end="\r", flush=True)
+    # Mirror data if needed
+    if MIRROR_DATA:
+        database_mirrored = np.empty_like(database)
+        sweep_angles_mirrored = []
+        angles_of_attack_mirrored = []
+        for idx, sweep in enumerate(sweep_angles):
+            aoa = -angles_of_attack[idx]
+            sweep_angles_mirrored.append(sweep)
+            angles_of_attack_mirrored.append(aoa)
+        database_mirrored = database.copy()
+        database_mirrored[:, 3:, :, :] = np.transpose(
+            database_mirrored[:, 3:, :, :], (0, 1, 3, 2)
+        )
+        # Concatenate original and mirrored data
+        database = np.concatenate((database, database_mirrored), axis=0)
+        sweep_angles += sweep_angles_mirrored
+        angles_of_attack += angles_of_attack_mirrored
+        print(f"Mirroring completed.")
     # Assign dataset variables
     dataset = {
         "sweep_angles": np.array(sweep_angles).astype(np.float32),
@@ -49,15 +68,17 @@ def main():
         "database": np.array(database).astype(np.float32),
     }
     # Save compressed dataset using compressed numpy
-    with open(
-        str(dataset_dir / f"wing-images-{IM_RES[0]}-{DENSITY_EXP}.npz"), "wb"
-    ) as f:
+    if MIRROR_DATA:
+        dataset_name = f"wing-images-{IM_RES[0]}-{DENSITY_EXP}-mirrored.npz"
+    else:
+        dataset_name = f"wing-images-{IM_RES[0]}-{DENSITY_EXP}.npz"
+    with open(str(dataset_dir / dataset_name), "wb") as f:
         pickle.dump(dataset, f, protocol=4)
     print(f"Image dataset for wings saved.")
 
     ## Testing
-    n_sim = len(files)
-    rand_ids = np.random.randint(0, n_sim, 5)
+    n_sim = len(database)
+    rand_ids = np.random.randint(0, n_sim, 10)
     for i in rand_ids:
         fig, axes = plt.subplots(2, 4, figsize=(20, 10))
         fig.suptitle(
