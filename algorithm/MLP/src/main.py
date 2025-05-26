@@ -89,20 +89,24 @@ def main():
         data_test = pre.scale_dataset(data_test, scaling)
 
     # Create dataloaders
+    if Const.mode == "mlp" or Const.mode == "mlp-tuning":
+        input_indices = Const.vel_idx + Const.pos_idx
+    elif Const.mode == "mlpn":
+        input_indices = Const.vel_idx + Const.pos_idx + Const.face_normal_idx
     train_dataset = mod.MlpDataset(
-        data_train[:, Const.vel_idx + Const.pos_idx],
+        data_train[:, input_indices],
         data_train[:, Const.flow_idx],
         Const.batch_size,
     )
     val_dataset = mod.MlpDataset(
-        data_val[:, Const.vel_idx + Const.pos_idx],
+        data_val[:, input_indices],
         data_val[:, Const.flow_idx],
         Const.batch_size,
     )
     train_dl = DataLoader(train_dataset, batch_size=1, shuffle=False)
     val_dl = DataLoader(val_dataset, batch_size=1, shuffle=False)
 
-    if Const.mode == "mlp":
+    if Const.mode == "mlp" or Const.mode == "mlpn":
         # Define the MLP model
         model = mod.MLP().to(device)
 
