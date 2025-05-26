@@ -160,7 +160,7 @@ def main():
         # save the history file
         out.write_hystory(history)
         # Save the indices of the the sub-sets into an xlsx file
-        out.write_datasets(indices, data_train.shape[0], data_val.shape[0])
+        out.write_datasets(indices, len(data_train_list), len(data_val_list))
 
     elif Const.mode == "mlp-tuning":
 
