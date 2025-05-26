@@ -16,7 +16,8 @@ from modules.constants import Const
 
 from modules.run import Run
 
-RUN_NAME = "trial-9"
+RUN_NAME = "trial-11"
+SCALE_MODE = "standard"  # "standard", "minmax"
 PITCH = 40.0
 YAW = 0.0
 WIND_SPEED = 17.0
@@ -28,7 +29,7 @@ def main():
 
     # Set the database path
     dataset_dir = root / "test_cases" / "ironcub" / "database"
-    dataset_file = dataset_dir / "ironcub-hovering-old.npz"
+    dataset_file = dataset_dir / "ironcub-hovering.npz"
 
     # Initialize the run object
     run = Run()
@@ -39,7 +40,7 @@ def main():
     run.load_dataset(dataset_file)
 
     # Compute aerodynamic forces MSE
-    run.compute_aerodynamic_forces(WIND_SPEED, "minmax")
+    run.compute_aerodynamic_forces(WIND_SPEED, SCALE_MODE)
 
     # Visualization
     # Compute dataset sample
@@ -49,12 +50,18 @@ def main():
     print(f"Database aerodynamic force: {run.aero_forces_in[sample]}")
     # Compute prediction with the model using scaled input
     input_vel = run.dataset[sample][:, Const.vel_idx] / run.scaling[0]
-    input_pos = (points - run.scaling[1]) / (run.scaling[2] - run.scaling[1])
+    if SCALE_MODE == "minmax":
+        input_pos = (points - run.scaling[1]) / (run.scaling[2] - run.scaling[1])
+    elif SCALE_MODE == "standard":
+        input_pos = (points - run.scaling[1]) / run.scaling[2]
     input = np.concatenate((input_vel, input_pos), axis=1)
     input = torch.from_numpy(input).float().to(run.device)
     output = run.model(input)
     output = output.cpu().detach().numpy()
-    output = output * (run.scaling[4] - run.scaling[3]) + run.scaling[3]
+    if SCALE_MODE == "minmax":
+        output = output * (run.scaling[4] - run.scaling[3]) + run.scaling[3]
+    elif SCALE_MODE == "standard":
+        output = output * run.scaling[4] + run.scaling[3]
     print(f"Predicted aerodynamic force: {run.aero_forces_out[sample]}")
     # Visualize pointclouds from the database and the prediction
     run.visualize_pointcloud(points, values, window_name="database sample")

@@ -135,7 +135,7 @@ class Run:
             if scale_mode == "minmax":
                 output = output * (self.scaling[4] - self.scaling[3]) + self.scaling[3]
             elif scale_mode == "standard":
-                output = output * self.scaling[2] + self.scaling[1]
+                output = output * self.scaling[4] + self.scaling[3]
             press_coeff = output[:, 0]
             fric_coeff = output[:, 1:]
             # Compute predicted centroidal aerodynamic force
@@ -155,8 +155,8 @@ class Run:
             self.aero_forces_out[i, :] = pred_aero_force
             self.aero_force_errors[i, :] = np.abs(dataset_aero_force - pred_aero_force)
         # Compute Mean Squared Error
-        aero_force_mse = np.mean(self.aero_force_errors**2, axis=0)
+        aero_force_rmse = np.sqrt(np.mean(self.aero_force_errors**2, axis=0))
         # Display MSE
-        print(f"MSE Drag Force: {aero_force_mse[2]}")
-        print(f"MSE Lift Force: {aero_force_mse[1]}")
-        print(f"MSE Side Force: {aero_force_mse[0]}")
+        print(f"RMSE Drag Force: {aero_force_rmse[2]}")
+        print(f"RMSE Lift Force: {aero_force_rmse[1]}")
+        print(f"RMSE Side Force: {aero_force_rmse[0]}")
