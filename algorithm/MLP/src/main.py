@@ -108,8 +108,8 @@ def main():
 
     if Const.mode == "mlp" or Const.mode == "mlpn":
         # Define the MLP model
-        Const.in_dim = len(input_indices)
-        Const.out_dim = len(Const.flow_idx)
+        Const.in_dim = len(input_indices) if Const.in_dim is None else Const.in_dim
+        Const.out_dim = len(Const.flow_idx) if Const.out_dim is None else Const.out_dim
         model = mod.MLP().to(device)
 
         # Initialize weights

@@ -40,8 +40,8 @@ class Const:
         self.flow_idx = [28, 29, 30, 31]
         self.area_idx = [32]
         # model parameters
-        self.in_dim = 6
-        self.out_dim = 4
+        self.in_dim = None
+        self.out_dim = None
         self.hid_layers = 5
         self.hid_dim = 256
         self.dropout = 0.0
