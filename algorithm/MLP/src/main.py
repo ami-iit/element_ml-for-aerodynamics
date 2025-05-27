@@ -73,12 +73,9 @@ def main():
     data_train = np.concatenate(data_train_list, axis=0)
     data_val = np.concatenate(data_val_list, axis=0)
     full_dataset = np.concatenate((data_train, data_val), axis=0)
-    print(f"Training set size: {data_train.shape}")
-    print(f"Validation set size: {data_val.shape}")
     if data_test_list:
         data_test = np.concatenate(data_test_list, axis=0)
         full_dataset = np.concatenate((full_dataset, data_test), axis=0)
-        print(f"Testing set size: {data_test.shape}")
 
     # Scale dataset
     print("Scaling dataset")
@@ -90,25 +87,28 @@ def main():
 
     # Create dataloaders
     if Const.mode == "mlp" or Const.mode == "mlp-tuning":
-        input_indices = Const.vel_idx + Const.pos_idx
+        in_idxs = Const.vel_idx + Const.pos_idx
     elif Const.mode == "mlpn":
-        input_indices = Const.vel_idx + Const.pos_idx + Const.face_normal_idx
+        in_idxs = Const.vel_idx + Const.pos_idx + Const.face_normal_idx
     train_dataset = mod.MlpDataset(
-        data_train[:, input_indices],
+        data_train[:, in_idxs],
         data_train[:, Const.flow_idx],
         Const.batch_size,
     )
     val_dataset = mod.MlpDataset(
-        data_val[:, input_indices],
+        data_val[:, in_idxs],
         data_val[:, Const.flow_idx],
         Const.batch_size,
     )
     train_dl = DataLoader(train_dataset, batch_size=1, shuffle=False)
     val_dl = DataLoader(val_dataset, batch_size=1, shuffle=False)
+    print(f"Train set size: {data_train[:, in_idxs].shape}")
+    print(f"Validation set size: {data_val[:, in_idxs].shape}")
+    print(f"Test set size: {data_test[:, in_idxs].shape}") if data_test_list else None
 
     if Const.mode == "mlp" or Const.mode == "mlpn":
         # Define the MLP model
-        Const.in_dim = len(input_indices) if Const.in_dim is None else Const.in_dim
+        Const.in_dim = len(in_idxs) if Const.in_dim is None else Const.in_dim
         Const.out_dim = len(Const.flow_idx) if Const.out_dim is None else Const.out_dim
         model = mod.MLP().to(device)
 
