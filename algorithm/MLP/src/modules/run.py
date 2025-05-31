@@ -119,14 +119,17 @@ class Run:
         self.aero_forces_out = np.zeros((len(self.dataset), 3))
         for i, sim in enumerate(self.dataset):
             # Get input: v_x, v_y, v_z, x, y, z
-            input = sim[:, Const.vel_idx + Const.pos_idx]
+            if Const.in_dim == 6:  # MLP
+                input = sim[:, Const.vel_idx + Const.pos_idx]
+            elif Const.in_dim == 9:  # MLPN
+                input = sim[:, Const.vel_idx + Const.pos_idx + Const.face_normal_idx]
             input[:, :3] /= self.scaling[0]
             if scale_mode == "minmax":
-                input[:, 3:] = (input[:, 3:] - self.scaling[1]) / (
+                input[:, 3:6] = (input[:, 3:6] - self.scaling[1]) / (
                     self.scaling[2] - self.scaling[1]
                 )
             elif scale_mode == "standard":
-                input[:, 3:] = (input[:, 3:] - self.scaling[1]) / self.scaling[2]
+                input[:, 3:6] = (input[:, 3:6] - self.scaling[1]) / self.scaling[2]
             input = torch.tensor(input, dtype=torch.float32).to(self.device)
             # Compute forward pass
             self.model.to(self.device)

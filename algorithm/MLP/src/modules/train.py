@@ -99,12 +99,14 @@ def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
             stop_train = True
 
         if Const.wandb_logging:
+            opt_str = f"_{Const.optuna_trial}" if Const.optuna_trial >= 0 else ""
             wandb.log(
                 {
-                    "train_loss": train_loss_avg[-1],
-                    "val_loss": val_loss_avg[-1],
-                    "best_epoch": best_epoch,
-                    "learning_rate": lr_history[-1],
+                    ("iteration" + opt_str): epoch,
+                    ("train_loss" + opt_str): train_loss_avg[-1],
+                    ("val_loss" + opt_str): val_loss_avg[-1],
+                    ("best_epoch" + opt_str): best_epoch,
+                    ("learning_rate" + opt_str): lr_history[-1],
                 }
             )
 

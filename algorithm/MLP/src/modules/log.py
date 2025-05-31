@@ -40,13 +40,15 @@ def log_aerodynamic_forces_error(
     aero_force_errors = np.zeros((len(dataset_list), 3))
     for i, sim in enumerate(dataset_list):
         # Get input: v_x, v_y, v_z, x, y, z
-        # input = sim[:, Const.vel_idx + Const.pos_idx].float().to(device)
-        input = sim[:, Const.vel_idx + Const.pos_idx]
+        if Const.in_dim == 6:
+            input = sim[:, Const.vel_idx + Const.pos_idx]
+        elif Const.in_dim == 9:
+            input = sim[:, Const.vel_idx + Const.pos_idx + Const.face_normal_idx]
         input[:, :3] /= scaling[0]
         if Const.scale_mode == "minmax":
-            input[:, 3:] = (input[:, 3:] - scaling[1]) / (scaling[2] - scaling[1])
+            input[:, 3:6] = (input[:, 3:6] - scaling[1]) / (scaling[2] - scaling[1])
         elif Const.scale_mode == "standard":
-            input[:, 3:] = (input[:, 3:] - scaling[1]) / scaling[2]
+            input[:, 3:6] = (input[:, 3:6] - scaling[1]) / scaling[2]
         input = torch.tensor(input, dtype=torch.float32).to(device)
         # Compute forward pass
         model.to(device)

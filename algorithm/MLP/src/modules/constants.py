@@ -46,6 +46,7 @@ class Const:
         self.hid_dim = 256
         self.dropout = 0.0
         # optuna parameters
+        self.optuna_trial = -1
         self.n_trials = 10
 
     def get_default_values(self):

@@ -16,7 +16,7 @@ from modules.constants import Const
 
 from modules.run import Run
 
-RUN_NAME = "trial-11"
+RUN_NAME = "trial-12"
 SCALE_MODE = "standard"  # "standard", "minmax"
 PITCH = 40.0
 YAW = 0.0
@@ -39,6 +39,9 @@ def main():
         run.load_train_from_wandb("ami-iit/MLP-iRonAero", RUN_NAME)
     run.load_dataset(dataset_file)
 
+    # Get model input layer dimension (MLP vs MLPN)
+    Const.in_dim = run.model.input_layer.weight.shape[1]
+
     # Compute aerodynamic forces MSE
     run.compute_aerodynamic_forces(WIND_SPEED, SCALE_MODE)
 
@@ -55,6 +58,9 @@ def main():
     elif SCALE_MODE == "standard":
         input_pos = (points - run.scaling[1]) / run.scaling[2]
     input = np.concatenate((input_vel, input_pos), axis=1)
+    if Const.in_dim == 9:  # MLP with face normals
+        input_n = run.dataset[sample][:, Const.face_normal_idx]
+        input = np.concatenate((input, input_n), axis=1)
     input = torch.from_numpy(input).float().to(run.device)
     output = run.model(input)
     output = output.cpu().detach().numpy()

@@ -164,7 +164,10 @@ def main():
         # Save the indices of the the sub-sets into an xlsx file
         out.write_datasets(indices, len(data_train_list), len(data_val_list))
 
-    elif Const.mode == "mlp-tuning":
+    elif Const.mode == "mlp-tuning" or Const.mode == "mlpn-tuning":
+
+        Const.in_dim = len(in_idxs) if Const.in_dim is None else Const.in_dim
+        Const.out_dim = len(Const.flow_idx) if Const.out_dim is None else Const.out_dim
 
         Const.optuna_trial = 0
 
@@ -174,8 +177,8 @@ def main():
             Const.batch_size = trial.suggest_int("batch_size", 50000, 500000)
             Const.initial_lr = trial.suggest_float("initial_lr", 1e-4, 1e-2)
             Const.reg_par = trial.suggest_float("reg_par", 1e-9, 1e-5)
-            Const.hid_layers = trial.suggest_int("hid_layers", 4, 12)
-            hid_dim_pow = trial.suggest_int("hid_dim_pow", 7, 9)
+            Const.hid_layers = trial.suggest_int("hid_layers", 1, 2)
+            hid_dim_pow = trial.suggest_int("hid_dim_pow", 4, 5)
             Const.hid_dim = int(2**hid_dim_pow)
             # Define the MLP model
             model = mod.MLP().to(device)
