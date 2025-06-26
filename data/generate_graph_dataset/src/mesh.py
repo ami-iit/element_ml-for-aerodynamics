@@ -169,12 +169,17 @@ def get_boundary_edges(mesh):
     return boundary_edges
 
 
-def visualize_mesh_with_edges(mesh):
+def visualize_mesh_with_edges(mesh, nodes, faces):
     """Visualizes the mesh along with points and edges."""
     # Convert mesh to line set (to visualize edges)
-    lines = np.asarray(mesh.triangles)[:, [[0, 1], [1, 2], [2, 0]]].reshape(-1, 2)
+    lines = []
+    for face in faces:
+        for i in range(len(face)):
+            edge = (face[i], face[(i + 1) % len(face)])
+            lines.append(edge)
+    lines = np.array(lines)
     line_set = o3d.geometry.LineSet()
-    line_set.points = mesh.vertices
+    line_set.points = o3d.utility.Vector3dVector(nodes)
     line_set.lines = o3d.utility.Vector2iVector(lines)
     # Get boundary edges and convert them to line set
     boundary_edges = get_boundary_edges(mesh)
@@ -185,7 +190,7 @@ def visualize_mesh_with_edges(mesh):
     boundary_line_set.paint_uniform_color([1, 0, 0])  # Red color for boundary edges
     # Create point cloud for vertices
     point_cloud = o3d.geometry.PointCloud()
-    point_cloud.points = mesh.vertices
+    point_cloud.points = o3d.utility.Vector3dVector(nodes)
     point_cloud.paint_uniform_color([0, 0, 1])  # Blue points
     # Show everything
     o3d.visualization.draw_geometries([mesh, line_set, point_cloud, boundary_line_set])

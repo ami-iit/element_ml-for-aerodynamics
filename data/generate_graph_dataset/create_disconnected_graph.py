@@ -7,7 +7,7 @@ import src.mesh as ms
 
 
 MESH = "dual"  # "dual" or "nodal"
-SHOW_PLOTS = False
+SHOW_PLOTS = True
 
 
 def main():
@@ -42,15 +42,16 @@ def main():
             if MESH == "dual":
 
                 # Transform in dual mesh
-                filename = f"mesh-{config}-0-0-{surface}.dtbs"
+                filename = f"{config}-{surface}.dlm"
                 datafile = list(data_path.rglob(filename))[0]
                 celldata = pd.read_csv(datafile, sep="\s+", skiprows=1, header=None)
                 cells = celldata.values[:, 1:4]
                 nodes, faces = ms.build_dual_mesh(nodes, faces, cells)
 
             # Create and visualize open mesh
-            mesh = ms.create_mesh_from_faces(nodes, faces)
-            ms.visualize_mesh_with_edges(mesh) if SHOW_PLOTS else None
+            if SHOW_PLOTS:
+                mesh = ms.create_mesh_from_faces(nodes, faces)
+                ms.visualize_mesh_with_edges(mesh, nodes, faces) if SHOW_PLOTS else None
 
             # Get all mesh edges
             edges = []
@@ -93,7 +94,7 @@ def main():
         # Create and visualize closed mesh
         if SHOW_PLOTS:
             mesh = ms.create_mesh_from_faces(all_nodes, all_faces)
-            ms.visualize_mesh_with_edges(mesh)
+            ms.visualize_mesh_with_edges(mesh, all_nodes, all_faces)
 
         # Save graph to file
         np.save(graph_dir / f"{config}-{MESH}-graph.npy", config_data)
