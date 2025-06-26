@@ -4,59 +4,64 @@ Date: 2025-01-31
 Description: Module for the learning architectures
 """
 
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import Dataset
+import torch_geometric.nn as gnn
 
 from modules.constants import Const
 
 
-# Multi Layer Perceptron
-class MLP(nn.Module):
+class GNN(nn.Module):
     def __init__(self):
-        super(MLP, self).__init__()
-        self.input_layer = nn.Linear(Const.in_dim, Const.hid_dim)
-        self.hidden_layers = nn.ModuleList(
-            [
+        super(GNN, self).__init__()
+        # Encoder layers
+        self.encoder = nn.Sequential(
+            nn.Linear(Const.in_dim, Const.hid_dim),  # Input layer
+            nn.ReLU(),
+            *[  # Hidden layers
                 nn.Sequential(
                     nn.Linear(Const.hid_dim, Const.hid_dim),
                     nn.ReLU(),
                     nn.Dropout(p=Const.dropout),
                 )
                 for _ in range(Const.hid_layers)
-            ]
+            ],
+            nn.Linear(Const.hid_dim, Const.in_dim),  # Output layer
         )
-        self.output_layer = nn.Linear(Const.hid_dim, Const.out_dim)
+        # GNN layers
+        self.conv_layers = nn.ModuleList(
+            [gnn.GCNConv(Const.in_dim, Const.in_dim) for _ in range(Const.gnc_layers)]
+        )
+        # Decoder layers
+        self.decoder = nn.Sequential(
+            nn.Linear(Const.in_dim, Const.hid_dim),  # Input layer
+            nn.ReLU(),
+            *[  # Hidden layers
+                nn.Sequential(
+                    nn.Linear(Const.hid_dim, Const.hid_dim),
+                    nn.ReLU(),
+                    nn.Dropout(p=Const.dropout),
+                )
+                for _ in range(Const.hid_layers)
+            ],
+            nn.Linear(Const.hid_dim, Const.out_dim),  # Output layer
+        )
 
-    def forward(self, input):
-        input_layer_out = F.relu(self.input_layer(input))
-        for hidden_layer in self.hidden_layers:
-            input_layer_out = hidden_layer(input_layer_out)
-        output = self.output_layer(input_layer_out)
+    def forward(self, x, edge_index):
+        out = self.encoder(x)
+        for conv in self.conv_layers:
+            out = conv(out, edge_index)
+            out = F.relu(out)
+            out = F.dropout(out, p=Const.dropout, training=self.training)
+        output = self.decoder(out)
         return output
 
 
-class MlpDataset(Dataset):
-    def __init__(self, X, y, batch_size):
-        # convert into PyTorch tensors and remember them
-        self.X = torch.tensor(X)
-        self.Y = torch.tensor(y)
-        self.batch_size = batch_size
-        self.num_batches = (len(self.X) + batch_size - 1) // batch_size
-
-    def __len__(self):
-        # this should return the size of the dataset
-        return self.num_batches
-
-    def __getitem__(self, idx):
-        # this should return one sample from the dataset
-        start = idx * self.batch_size
-        end = min(start + self.batch_size, len(self.X))
-        return self.X[start:end], self.Y[start:end]
-
-
 def initialize_weights_xavier_normal(model):
-    for name, layer in model.named_modules():
-        if isinstance(layer, (torch.nn.Linear)):
-            torch.nn.init.xavier_uniform_(layer.weight, gain=1.0)
+    for _, layer in model.named_modules():
+        if isinstance(layer, (nn.Linear)):
+            nn.init.xavier_uniform_(layer.weight, gain=1.0)
+            nn.init.zeros_(layer.bias) if layer.bias is not None else None
+        elif isinstance(layer, (gnn.GCNConv)):
+            nn.init.xavier_uniform_(layer.lin.weight, gain=1.0)
+            nn.init.zeros_(layer.lin.bias) if layer.lin.bias is not None else None

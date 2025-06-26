@@ -34,16 +34,17 @@ class Const:
         self.lr_iters = 10000
         self.lr_patience = 50
         self.reg_par = 1e-6
-        self.vel_idx = [0, 1, 2]
-        self.pos_idx = [22, 23, 24]
-        self.face_normal_idx = [25, 26, 27]
-        self.flow_idx = [28, 29, 30, 31]
-        self.area_idx = [32]
+        self.vel_idx = [3, 4, 5]
+        self.pos_idx = [0, 1, 2]
+        self.face_normal_idx = [6, 7, 8]
+        self.flow_idx = [0, 1, 2, 3]
+        self.area_idx = [None]
         # model parameters
         self.in_dim = None
         self.out_dim = None
         self.hid_layers = 5
         self.hid_dim = 256
+        self.gnc_layers = 10
         self.dropout = 0.0
         # optuna parameters
         self.optuna_trial = -1

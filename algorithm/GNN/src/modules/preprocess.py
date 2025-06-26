@@ -58,10 +58,9 @@ def check_if_default(key, options, default_values):
 def load_dataset():
     print(f"Loading dataset: {Const.dataset_path}")
     datafile = np.load(Const.dataset_path, allow_pickle=True)
-    data = datafile["data"].tolist()
-    dataset = data["data"]
-    pitch_angles = data["pitch_angles"]
-    yaw_angles = data["yaw_angles"]
+    dataset = datafile["database"]
+    pitch_angles = datafile["pitch_angles"]
+    yaw_angles = datafile["yaw_angles"]
     return dataset, pitch_angles, yaw_angles
 
 
@@ -80,35 +79,50 @@ def set_seed(seed: int = 42) -> None:
         os.environ["PYTHONHASHSEED"] = str(seed)
 
 
-def compute_scaling(data):
-    max_wind_speed = np.max(np.abs(data[:, Const.vel_idx]))
+def compute_scaling(dataset):
+    x_len = dataset[0].x.shape[1]
+    y_len = dataset[0].y.shape[1]
+    X = np.empty((0, x_len))
+    Y = np.empty((0, y_len))
+    max_wind_speed = 0.0
+    for graph in dataset:
+        X = np.vstack((X, graph.x))
+        Y = np.vstack((Y, graph.y))
+    dataset_size = X.shape[0]
+    max_wind_speed = np.max(np.abs(X[:, Const.vel_idx]))
     if Const.scale_mode == "minmax":
-        X_min = np.min(data[:, Const.pos_idx], axis=0)
-        X_max = np.max(data[:, Const.pos_idx], axis=0)
-        Y_min = np.min(data[:, Const.flow_idx], axis=0)
-        Y_max = np.max(data[:, Const.flow_idx], axis=0)
+        X_min = np.min(X[:, Const.pos_idx], axis=0)
+        X_max = np.max(X[:, Const.pos_idx], axis=0)
+        Y_min = np.min(Y[:, Const.flow_idx], axis=0)
+        Y_max = np.max(Y[:, Const.flow_idx], axis=0)
         return max_wind_speed, X_min, X_max, Y_min, Y_max
     elif Const.scale_mode == "standard":
-        X_mean = np.mean(data[:, Const.pos_idx], axis=0)
-        X_std = np.std(data[:, Const.pos_idx], axis=0)
-        Y_mean = np.mean(data[:, Const.flow_idx], axis=0)
-        Y_std = np.std(data[:, Const.flow_idx], axis=0)
+        X_mean = np.mean(X[:, Const.pos_idx], axis=0)
+        X_std = np.std(X[:, Const.pos_idx], axis=0)
+        Y_mean = np.mean(Y[:, Const.flow_idx], axis=0)
+        Y_std = np.std(Y[:, Const.flow_idx], axis=0)
         return max_wind_speed, X_mean, X_std, Y_mean, Y_std
 
 
-def scale_dataset(data, scaling):
-    data[:, Const.vel_idx] /= scaling[0]
-    if Const.scale_mode == "minmax":
-        data[:, Const.pos_idx] = (data[:, Const.pos_idx] - scaling[1]) / (
-            scaling[2] - scaling[1]
-        )
-        data[:, Const.flow_idx] = (data[:, Const.flow_idx] - scaling[3]) / (
-            scaling[4] - scaling[3]
-        )
-    elif Const.scale_mode == "standard":
-        data[:, Const.pos_idx] = (data[:, Const.pos_idx] - scaling[1]) / scaling[2]
-        data[:, Const.flow_idx] = (data[:, Const.flow_idx] - scaling[3]) / scaling[4]
-    return data
+def scale_dataset(dataset, scaling):
+    scaling = tuple(s.astype(np.float32) for s in scaling)
+    for graph in dataset:
+        graph.x[:, Const.vel_idx] /= scaling[0]
+        if Const.scale_mode == "minmax":
+            graph.x[:, Const.pos_idx] = (graph.x[:, Const.pos_idx] - scaling[1]) / (
+                scaling[2] - scaling[1]
+            )
+            graph.y[:, Const.flow_idx] = (graph.y[:, Const.flow_idx] - scaling[3]) / (
+                scaling[4] - scaling[3]
+            )
+        elif Const.scale_mode == "standard":
+            graph.x[:, Const.pos_idx] = (
+                graph.x[:, Const.pos_idx] - scaling[1]
+            ) / scaling[2]
+            graph.y[:, Const.flow_idx] = (
+                graph.y[:, Const.flow_idx] - scaling[3]
+            ) / scaling[4]
+    return dataset
 
 
 def split_dataset(dataset, p_val, p_test):

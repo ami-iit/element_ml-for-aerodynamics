@@ -11,7 +11,7 @@ import torch.optim as optim
 from modules.constants import Const
 
 
-def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
+def train_GNN(train_dataloader, val_dataloader, model, loss, optimizer, device):
     outputs = []
     train_loss_avg = []
     min_loss_avg = []
@@ -34,45 +34,40 @@ def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
         )
 
     print("\nStarting the training \n")
+
     while not stop_train:
         time_start = time.time()
-        model.train()
 
+        # Train step
+        model.train()
         train_loss_avg.append(0)
         min_loss_avg.append(0)
         num_batches_train = 0
-        for features_batch, target_batch in train_dataloader:
-
-            features_batch = features_batch.to(device)
-            target_batch = target_batch.to(device)
-
+        for data_batch in train_dataloader:
             # Compute forward pass
-            pred = model(features_batch)
-
+            data_batch.to(device)
+            pred = model(data_batch.x, data_batch.edge_index)
             # Compute loss
-            train_loss = loss(pred, target_batch)
-
+            train_loss = loss(pred, data_batch.y)
             # Backward step
             optimizer.zero_grad()
             train_loss.backward()
             optimizer.step()
-
             # Update loss
             train_loss_avg[-1] += train_loss.item()
             num_batches_train += 1
+        train_loss_avg[-1] /= num_batches_train
 
+        # Validation step
         model.eval()
         val_loss_avg.append(0)
         num_batches_val = 0
-        for features_batch, target_batch in val_dataloader:
-            features_batch = features_batch.to(device)
-            target_batch = target_batch.to(device)
-            pred = model(features_batch)
-            val_loss = loss(pred, target_batch)
+        for data_batch in val_dataloader:
+            data_batch.to(device)
+            pred = model(data_batch.x, data_batch.edge_index)
+            val_loss = loss(pred, data_batch.y)
             val_loss_avg[-1] += val_loss.item()
             num_batches_val += 1
-
-        train_loss_avg[-1] /= num_batches_train
         val_loss_avg[-1] /= num_batches_val
 
         if val_loss_avg[-1] < min_val_loss:
@@ -88,10 +83,9 @@ def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
         elif Const.lr_scheduler == "plateau":
             scheduler.step(val_loss_avg[-1])
 
-        time_end = time.time()
         outputs.append((epoch, train_loss_avg[-1], val_loss_avg[-1], lr_history[-1]))
         print(
-            f"Epoch {epoch+1}/{Const.epochs}: Train loss: {train_loss_avg[-1]:5f}, Val loss: {val_loss_avg[-1]:.5f}, lr: {lr_history[-1]:.3e}, iter time: {time_end - time_start:.2f} s"
+            f"Epoch {epoch+1}/{Const.epochs}: Train loss: {train_loss_avg[-1]:5f}, Val loss: {val_loss_avg[-1]:.5f}, lr: {lr_history[-1]:.3e}, iter time: {time.time() - time_start:.2f} s"
         )
 
         epoch = epoch + 1

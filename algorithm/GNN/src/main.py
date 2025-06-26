@@ -6,19 +6,16 @@ Description:    Main module to execute the training of the Multi-Layer
                 flow variables (MLP-Aero).
 """
 
-import numpy as np
 import sys
-import torch
-import torch.nn as nn
-import torch.onnx
-import torch.jit
-from torch.utils.data import DataLoader
-import random as random
 import time as time
-import torchsummary
+import random as random
+import numpy as np
+import torch
+from torch_geometric.loader import DataLoader
+from torch_geometric.nn import summary
+import wandb
 import optuna
 from optuna.trial import TrialState
-import wandb
 
 from modules import preprocess as pre
 from modules import models as mod
@@ -33,10 +30,13 @@ def main():
     default_values = Const.get_default_values()
     # Read configuration file
     print("Reading config file")
-    if len(sys.argv) < 2:
-        print("\n\033[31mNo .cfg file provided in input.\nKilling execution \033[0m")
-        sys.exit()
-    Const.config_path = str(sys.argv[1])
+    # if len(sys.argv) < 2:
+    #     print("\n\033[31mNo .cfg file provided in input.\nKilling execution \033[0m")
+    #     sys.exit()
+    # Const.config_path = str(sys.argv[1])
+    Const.config_path = str(
+        r"C:\Users\apaolino\code\element_ml-for-aerodynamics\algorithm\GNN\test_cases\ironcub\input.cfg"
+    )
     config_options = pre.read_config_file(Const.config_path)
 
     # Set constant values from options dictionary
@@ -50,9 +50,6 @@ def main():
     # Print options for user check
     pre.print_options(config_options, default_values)
 
-    # Load dataset
-    dataset, _, _ = pre.load_dataset()
-
     # Initialize device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Device: {}".format(device))
@@ -61,58 +58,44 @@ def main():
     pre.set_seed(Const.rnd_seed)
     print(f"Random seed set as {Const.rnd_seed}")
 
-    # Split dataset
-    data_train_list, data_val_list, data_test_list, indices = pre.split_dataset(
-        dataset, Const.val_set, Const.test_set
-    )
-    # train_idx = indices[: len(data_train_list)]
-    # val_idx = indices[len(data_train_list) : len(data_train_list) + len(data_val_list)]
-    # test_idx = indices[len(data_train_list) + len(data_val_list) :]
-
-    # Concatenate sample points
-    data_train = np.concatenate(data_train_list, axis=0)
-    data_val = np.concatenate(data_val_list, axis=0)
-    full_dataset = np.concatenate((data_train, data_val), axis=0)
-    if data_test_list:
-        data_test = np.concatenate(data_test_list, axis=0)
-        full_dataset = np.concatenate((full_dataset, data_test), axis=0)
+    # Load dataset
+    dataset, _, _ = pre.load_dataset()
 
     # Scale dataset
     print("Scaling dataset")
-    scaling = pre.compute_scaling(full_dataset)
-    data_train = pre.scale_dataset(data_train, scaling)
-    data_val = pre.scale_dataset(data_val, scaling)
-    if data_test_list:
-        data_test = pre.scale_dataset(data_test, scaling)
+    scaling = pre.compute_scaling(dataset)
+    scaled_dataset = pre.scale_dataset(dataset, scaling)
+
+    # Select input variables
+    in_idxs = Const.pos_idx + Const.vel_idx + Const.face_normal_idx
+    for graph in scaled_dataset:
+        graph.x = graph.x[:, Const.pos_idx + Const.vel_idx + Const.face_normal_idx]
+
+    # Split dataset
+    data_train, data_val, data_test, indices = pre.split_dataset(
+        scaled_dataset, Const.val_set, Const.test_set
+    )
 
     # Create dataloaders
-    if Const.mode == "mlp" or Const.mode == "mlp-tuning":
-        in_idxs = Const.vel_idx + Const.pos_idx
-    elif Const.mode == "mlpn":
-        in_idxs = Const.vel_idx + Const.pos_idx + Const.face_normal_idx
-    train_dataset = mod.MlpDataset(
-        data_train[:, in_idxs],
-        data_train[:, Const.flow_idx],
-        Const.batch_size,
-    )
-    val_dataset = mod.MlpDataset(
-        data_val[:, in_idxs],
-        data_val[:, Const.flow_idx],
-        Const.batch_size,
-    )
-    train_dl = DataLoader(train_dataset, batch_size=1, shuffle=False)
-    val_dl = DataLoader(val_dataset, batch_size=1, shuffle=False)
-    print(f"Train set size: {data_train[:, in_idxs].shape}")
-    print(f"Validation set size: {data_val[:, in_idxs].shape}")
-    print(f"Test set size: {data_test[:, in_idxs].shape}") if data_test_list else None
+    train_dl = DataLoader(data_train, batch_size=6, shuffle=False)
+    val_dl = DataLoader(data_val, batch_size=6, shuffle=False)
 
-    if Const.mode == "mlp" or Const.mode == "mlpn":
-        # Define the MLP model
+    if Const.mode == "gnn":
+        # Define the input and output dimensions
         Const.in_dim = len(in_idxs) if Const.in_dim is None else Const.in_dim
         Const.out_dim = len(Const.flow_idx) if Const.out_dim is None else Const.out_dim
-        model = mod.MLP().to(device)
 
-        # Initialize weights
+        # Compute dataset sizes
+        train_len = np.sum([g.x.shape[0] for g in data_train])
+        print(f"Train set size: [{train_len},{Const.in_dim}]")
+        val_len = np.sum([g.x.shape[0] for g in data_val])
+        print(f"Validation set size: [{val_len},{Const.in_dim}]")
+        if data_test:
+            test_len = np.sum([g.x.shape[0] for g in data_test])
+            print(f"Test set size: [{test_len},{Const.in_dim}]")
+
+        # Initialize the GNN model and weights
+        model = mod.GNN()
         mod.initialize_weights_xavier_normal(model)
         # Define loss function
         loss = torch.nn.MSELoss()
@@ -120,30 +103,24 @@ def main():
         optimizer = torch.optim.Adam(
             model.parameters(), lr=Const.initial_lr, weight_decay=Const.reg_par
         )
-
         # Print model summary
         print("Model summary")
-        torchsummary.summary(model.to(device), (Const.in_dim,))
-
-        # Move model to device
-        model.to(device)
+        print(summary(model, data_train[0].x, data_train[0].edge_index))
 
         # Count the number of trainable parameters
         train_param = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        data_size = data_train.size
-        if data_size < train_param:
+        print(f"\nTotal number of trainable parameters: {train_param}")
+        if train_len < train_param:
             print(
                 "Warning: the number of trainable parameters is greater than the dataset size"
             )
 
+        # Move model to device
+        model.to(device)
+
         # Training
-        history, model, best_model = train.train_MLP(
-            train_dl,
-            val_dl,
-            model,
-            loss,
-            optimizer,
-            device,
+        history, model, best_model = train.train_GNN(
+            train_dl, val_dl, model, loss, optimizer, device
         )
 
         # Generate output
@@ -156,33 +133,41 @@ def main():
         out.save_model(
             model,
             optimizer,
-            torch.ones((1, Const.in_dim)),
+            (data_train[0].x, data_train[0].edge_index),
             best_model,
         )
         # save the history file
         out.write_hystory(history)
         # Save the indices of the the sub-sets into an xlsx file
-        out.write_datasets(indices, len(data_train_list), len(data_val_list))
+        out.write_datasets(indices, len(data_train), len(data_val))
 
     elif Const.mode == "mlp-tuning" or Const.mode == "mlpn-tuning":
 
         Const.in_dim = len(in_idxs) if Const.in_dim is None else Const.in_dim
         Const.out_dim = len(Const.flow_idx) if Const.out_dim is None else Const.out_dim
 
+        # Compute dataset sizes
+        train_len = np.sum([g.x.shape[0] for g in data_train])
+        print(f"Train set size: [{train_len},{Const.in_dim}]")
+        val_len = np.sum([g.x.shape[0] for g in data_val])
+        print(f"Validation set size: [{val_len},{Const.in_dim}]")
+        if data_test:
+            test_len = np.sum([g.x.shape[0] for g in data_test])
+            print(f"Test set size: [{test_len},{Const.in_dim}]")
+
         Const.optuna_trial = 0
 
         # Define the objective function
         def objective(trial):
             print(f"Optuna trial: {Const.optuna_trial}/{Const.n_trials}")
-            Const.batch_size = trial.suggest_int("batch_size", 50000, 500000)
+            Const.batch_size = trial.suggest_int("batch_size", 1, 10)
             Const.initial_lr = trial.suggest_float("initial_lr", 1e-4, 1e-2)
             Const.reg_par = trial.suggest_float("reg_par", 1e-9, 1e-5)
             Const.hid_layers = trial.suggest_int("hid_layers", 1, 2)
             hid_dim_pow = trial.suggest_int("hid_dim_pow", 4, 5)
             Const.hid_dim = int(2**hid_dim_pow)
-            # Define the MLP model
-            model = mod.MLP().to(device)
-            # Initialize weights
+            # Initialize the GNN model and weights
+            model = mod.GNN()
             mod.initialize_weights_xavier_normal(model)
             # Define loss function
             loss = torch.nn.MSELoss()
@@ -192,24 +177,19 @@ def main():
             )
             # Print model summary
             print("Model summary")
-            torchsummary.summary(model.to(device), (Const.in_dim,))
-            # Move model to device
-            model.to(device)
+            print(summary(model, data_train[0]))
             # Count the number of trainable parameters
             train_param = sum(p.numel() for p in model.parameters() if p.requires_grad)
-            data_size = data_train.size
-            if data_size < train_param:
+            print(f"\nTotal number of trainable parameters: {train_param}")
+            if train_len < train_param:
                 print(
                     "Warning: the number of trainable parameters is greater than the dataset size"
                 )
+            # Move model to device
+            model.to(device)
             # Training
-            history, model, best_model = train.train_MLP(
-                train_dl,
-                val_dl,
-                model,
-                loss,
-                optimizer,
-                device,
+            history, model, best_model = train.train_GNN(
+                train_dl, val_dl, model, loss, optimizer, device
             )
             # Compute optuna score
             train_loss = history[-1][1]
