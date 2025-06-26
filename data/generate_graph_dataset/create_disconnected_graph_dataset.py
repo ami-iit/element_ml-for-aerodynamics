@@ -79,9 +79,8 @@ def main():
 
             # Graph Data Transformation
             edge_index = torch.tensor(flow.edges, dtype=torch.long).t().contiguous()
-            x = np.hstack(
-                (flow.nodes, np.tile(wind_velocity, (flow.nodes.shape[0], 1)))
-            )
+            wind_velocities = np.tile(wind_velocity, (flow.nodes.shape[0], 1))
+            x = np.hstack((flow.nodes, wind_velocities, flow.face_normals, flow.areas))
             y = np.hstack((flow.press_coeff[:, None], flow.fric_coeff))
             x = torch.tensor(x, dtype=torch.float)
             y = torch.tensor(y, dtype=torch.float)

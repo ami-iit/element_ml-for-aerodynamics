@@ -52,6 +52,8 @@ class FlowImporter:
             dyn_press = 0.5 * air_dens * airspeed**2
             s_data.press_coeff = s_data.pressure / dyn_press
             s_data.fric_coeff = s_data.friction / dyn_press
+            s_data.areas = np.linalg.norm(s_data.w_face_areas, axis=1)
+            s_data.w_face_normals = s_data.w_face_areas / s_data.areas[:, None]
         return
 
     def transform_points(self, frame_1_H_frame_2, points):
@@ -73,7 +75,8 @@ class FlowImporter:
             s_data.press_coeff = s_data.press_coeff[indices]
             s_data.friction = s_data.friction[indices]
             s_data.fric_coeff = s_data.fric_coeff[indices]
-            s_data.w_face_areas = s_data.w_face_areas[indices]
+            s_data.areas = s_data.areas[indices]
+            s_data.w_face_normals = s_data.w_face_normals[indices]
             s_data.edges = s_data.edges[indices]
         return
 
@@ -81,13 +84,17 @@ class FlowImporter:
         self.nodes = np.empty(shape=(0, 3))
         self.press_coeff = np.empty(shape=(0,))
         self.fric_coeff = np.empty(shape=(0, 3))
-        self.face_areas = np.empty(shape=(0, 3))
+        self.areas = np.empty(shape=(0, 1))
+        self.face_normals = np.empty(shape=(0, 3))
         self.edges = np.empty(shape=(0, 2))
         for s_data in self.surface.values():
+            edge_bias = len(self.nodes)
             self.nodes = np.append(self.nodes, s_data.mesh_nodes, axis=0)
             self.press_coeff = np.append(self.press_coeff, s_data.press_coeff)
             self.fric_coeff = np.append(self.fric_coeff, s_data.fric_coeff, axis=0)
-            self.face_areas = np.append(self.face_areas, s_data.w_face_areas, axis=0)
-            edge_bias = len(self.nodes)
+            self.areas = np.append(self.areas, s_data.areas[:, None], axis=0)
+            self.face_normals = np.append(
+                self.face_normals, s_data.w_face_normals, axis=0
+            )
             self.edges = np.append(self.edges, s_data.edges + edge_bias, axis=0)
         return
