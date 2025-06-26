@@ -42,9 +42,12 @@ class Const:
         # model parameters
         self.in_dim = None
         self.out_dim = None
-        self.hid_layers = 5
-        self.hid_dim = 256
-        self.gnc_layers = 10
+        self.enc_layers = 3
+        self.enc_dim = 32
+        self.latent_dim = 16
+        self.gnc_layers = 3
+        self.dec_layers = 3
+        self.dec_dim = 32
         self.dropout = 0.0
         # optuna parameters
         self.optuna_trial = -1

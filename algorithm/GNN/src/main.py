@@ -77,8 +77,8 @@ def main():
     )
 
     # Create dataloaders
-    train_dl = DataLoader(data_train, batch_size=6, shuffle=False)
-    val_dl = DataLoader(data_val, batch_size=6, shuffle=False)
+    train_dl = DataLoader(data_train, batch_size=Const.batch_size, shuffle=False)
+    val_dl = DataLoader(data_val, batch_size=Const.batch_size, shuffle=False)
 
     if Const.mode == "gnn":
         # Define the input and output dimensions

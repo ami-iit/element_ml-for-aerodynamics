@@ -16,35 +16,38 @@ class GNN(nn.Module):
         super(GNN, self).__init__()
         # Encoder layers
         self.encoder = nn.Sequential(
-            nn.Linear(Const.in_dim, Const.hid_dim),  # Input layer
+            nn.Linear(Const.in_dim, Const.enc_dim),  # Input layer
             nn.ReLU(),
             *[  # Hidden layers
                 nn.Sequential(
-                    nn.Linear(Const.hid_dim, Const.hid_dim),
+                    nn.Linear(Const.enc_dim, Const.enc_dim),
                     nn.ReLU(),
                     nn.Dropout(p=Const.dropout),
                 )
-                for _ in range(Const.hid_layers)
+                for _ in range(Const.enc_layers)
             ],
-            nn.Linear(Const.hid_dim, Const.in_dim),  # Output layer
+            nn.Linear(Const.enc_dim, Const.latent_dim),  # Output layer
         )
         # GNN layers
         self.conv_layers = nn.ModuleList(
-            [gnn.GCNConv(Const.in_dim, Const.in_dim) for _ in range(Const.gnc_layers)]
+            [
+                gnn.GCNConv(Const.latent_dim, Const.latent_dim)
+                for _ in range(Const.gnc_layers)
+            ]
         )
         # Decoder layers
         self.decoder = nn.Sequential(
-            nn.Linear(Const.in_dim, Const.hid_dim),  # Input layer
+            nn.Linear(Const.latent_dim, Const.dec_dim),  # Input layer
             nn.ReLU(),
             *[  # Hidden layers
                 nn.Sequential(
-                    nn.Linear(Const.hid_dim, Const.hid_dim),
+                    nn.Linear(Const.dec_dim, Const.dec_dim),
                     nn.ReLU(),
                     nn.Dropout(p=Const.dropout),
                 )
-                for _ in range(Const.hid_layers)
+                for _ in range(Const.dec_layers)
             ],
-            nn.Linear(Const.hid_dim, Const.out_dim),  # Output layer
+            nn.Linear(Const.dec_dim, Const.out_dim),  # Output layer
         )
 
     def forward(self, x, edge_index):
