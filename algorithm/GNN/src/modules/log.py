@@ -47,14 +47,13 @@ def log_aerodynamic_forces_error(
         # Scale input
         x[:, :3] /= scaling[0]
         if Const.scale_mode == "minmax":
-            x[:, 3:6] = (input[:, 3:6] - scaling[1]) / (scaling[2] - scaling[1])
+            x[:, 3:6] = (x[:, 3:6] - scaling[1]) / (scaling[2] - scaling[1])
         elif Const.scale_mode == "standard":
-            x[:, 3:6] = (input[:, 3:6] - scaling[1]) / scaling[2]
-        input = torch.tensor(input, dtype=torch.float32).to(device)
+            x[:, 3:6] = (x[:, 3:6] - scaling[1]) / scaling[2]
         # Compute forward pass
         model.to(device)
         model.eval()
-        output = model(input, data.edge_index).detach().cpu().numpy()
+        output = model(x.to(device), data.edge_index.to(device)).detach().cpu().numpy()
         # Rescale output
         if Const.scale_mode == "minmax":
             output = output * (scaling[4] - scaling[3]) + scaling[3]
@@ -64,15 +63,15 @@ def log_aerodynamic_forces_error(
         fric_coeff = output[:, 1:]
         # Compute predicted centroidal aerodynamic force
         dyn_press = 0.5 * 1.225 * 17.0**2
-        face_normals = data.x[:, Const.face_normal_idx]
-        areas = data.x[:, Const.area_idx]
+        face_normals = data.x[:, Const.face_normal_idx].numpy()
+        areas = data.x[:, Const.area_idx].numpy()
         pressure = press_coeff.reshape(-1, 1) * dyn_press
         friction = fric_coeff * dyn_press
         d_force = pressure * face_normals * areas + friction * areas
         pred_aero_force = np.sum(d_force, axis=0)
         # Compute dataset aerodynamic force
-        pressure = data.y[:, Const.flow_idx[0]].reshape(-1, 1) * dyn_press
-        friction = data.y[:, Const.flow_idx[1:]] * dyn_press
+        pressure = data.y[:, Const.flow_idx[0]].numpy().reshape(-1, 1) * dyn_press
+        friction = data.y[:, Const.flow_idx[1:]].numpy() * dyn_press
         d_force = pressure * face_normals * areas + friction * areas
         dataset_aero_force = np.sum(d_force, axis=0)
         # Compute error

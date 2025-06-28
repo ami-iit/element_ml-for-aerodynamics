@@ -11,6 +11,7 @@ import torch
 import sys
 import configparser
 import tabulate
+import copy
 from pathlib import Path
 
 from modules.constants import Const
@@ -105,7 +106,9 @@ def compute_scaling(dataset):
 
 def scale_dataset(dataset, scaling):
     scaling = tuple(s.astype(np.float32) for s in scaling)
-    for graph in dataset:
+    # Deep copy each Data object to avoid shared references
+    scaled_dataset = [copy.deepcopy(graph) for graph in dataset]
+    for graph in scaled_dataset:
         graph.x[:, Const.vel_idx] /= scaling[0]
         if Const.scale_mode == "minmax":
             graph.x[:, Const.pos_idx] = (graph.x[:, Const.pos_idx] - scaling[1]) / (
@@ -121,7 +124,7 @@ def scale_dataset(dataset, scaling):
             graph.y[:, Const.flow_idx] = (
                 graph.y[:, Const.flow_idx] - scaling[3]
             ) / scaling[4]
-    return dataset
+    return scaled_dataset
 
 
 def split_dataset(dataset, p_val, p_test):

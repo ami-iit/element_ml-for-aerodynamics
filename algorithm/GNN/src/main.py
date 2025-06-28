@@ -75,9 +75,9 @@ def main():
     data_train, data_val, data_test, indices = pre.split_dataset(
         scaled_dataset, Const.val_set, Const.test_set
     )
-    train_indices = indices[: len(data_train)]
-    val_indices = indices[len(data_train) : len(data_train) + len(data_val)]
-    test_indices = indices[len(data_train) + len(data_val) :] if data_test else None
+    train_idx = indices[: len(data_train)]
+    val_idx = indices[len(data_train) : len(data_train) + len(data_val)]
+    test_idx = indices[len(data_train) + len(data_val) :] if data_test else None
 
     # Create dataloaders
     train_dl = DataLoader(data_train, batch_size=Const.batch_size, shuffle=False)
@@ -240,7 +240,7 @@ def main():
     if Const.wandb_logging and Const.mode != "mlp-tuning":
         # Log the aerodynamic forces error of the training set
         log.log_aerodynamic_forces_error(
-            dataset[train_indices],
+            [dataset[i] for i in train_idx.tolist()],
             model,
             device,
             scaling,
@@ -248,7 +248,7 @@ def main():
         )
         # Log the aerodynamic forces error of the validation set
         log.log_aerodynamic_forces_error(
-            dataset[val_indices],
+            [dataset[i] for i in val_idx.tolist()],
             model,
             device,
             scaling,
@@ -257,7 +257,7 @@ def main():
         # Log the aerodynamic forces error of the test set
         if data_test:
             log.log_aerodynamic_forces_error(
-                dataset[test_indices],
+                [dataset[i] for i in test_idx.tolist()],
                 model,
                 device,
                 scaling,
