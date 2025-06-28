@@ -60,7 +60,6 @@ def main():
 
     # Load dataset
     dataset, _, _ = pre.load_dataset()
-    dataset = dataset[:101]
 
     # Scale dataset
     print("Scaling dataset")
