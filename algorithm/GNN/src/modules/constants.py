@@ -34,11 +34,11 @@ class Const:
         self.lr_iters = 10000
         self.lr_patience = 50
         self.reg_par = 1e-6
-        self.vel_idx = [3, 4, 5]
-        self.pos_idx = [0, 1, 2]
+        self.vel_idx = [0, 1, 2]
+        self.pos_idx = [3, 4, 5]
         self.face_normal_idx = [6, 7, 8]
+        self.area_idx = [9]
         self.flow_idx = [0, 1, 2, 3]
-        self.area_idx = [None]
         # model parameters
         self.in_dim = None
         self.out_dim = None

@@ -88,7 +88,6 @@ def compute_scaling(dataset):
     for graph in dataset:
         X = np.vstack((X, graph.x))
         Y = np.vstack((Y, graph.y))
-    dataset_size = X.shape[0]
     max_wind_speed = np.max(np.abs(X[:, Const.vel_idx]))
     if Const.scale_mode == "minmax":
         X_min = np.min(X[:, Const.pos_idx], axis=0)
