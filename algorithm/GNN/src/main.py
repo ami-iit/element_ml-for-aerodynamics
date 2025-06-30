@@ -30,13 +30,10 @@ def main():
     default_values = Const.get_default_values()
     # Read configuration file
     print("Reading config file")
-    # if len(sys.argv) < 2:
-    #     print("\n\033[31mNo .cfg file provided in input.\nKilling execution \033[0m")
-    #     sys.exit()
-    # Const.config_path = str(sys.argv[1])
-    Const.config_path = str(
-        r"C:\Users\apaolino\code\element_ml-for-aerodynamics\algorithm\GNN\test_cases\ironcub\input.cfg"
-    )
+    if len(sys.argv) < 2:
+        print("\n\033[31mNo .cfg file provided in input.\nKilling execution \033[0m")
+        sys.exit()
+    Const.config_path = str(sys.argv[1])
     config_options = pre.read_config_file(Const.config_path)
 
     # Set constant values from options dictionary
