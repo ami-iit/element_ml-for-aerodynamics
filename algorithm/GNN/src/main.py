@@ -118,7 +118,9 @@ def main():
             )
 
         # Compile and move model to device
-        model = torch.compile(model, dynamic=True, fullgraph=True)
+        if Const.compile_model:
+            torch.set_float32_matmul_precision("high")
+            model.compile(dynamic=True, fullgraph=True)
         model.to(device)
 
         # Training

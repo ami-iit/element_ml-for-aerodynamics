@@ -25,6 +25,7 @@ class Const:
         self.mode = "mlp"
         self.scale_mode = "standard"
         self.rnd_seed = None
+        self.compile_model = False
         self.val_set = 15
         self.test_set = 0
         self.batch_size = 1000
