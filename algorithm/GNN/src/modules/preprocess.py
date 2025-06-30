@@ -13,6 +13,7 @@ import configparser
 import tabulate
 import copy
 from pathlib import Path
+import torch_geometric.transforms as T
 
 from modules.constants import Const
 
@@ -78,6 +79,18 @@ def set_seed(seed: int = 42) -> None:
         torch.use_deterministic_algorithms(True)
         # Set a fixed value for the hash seed
         os.environ["PYTHONHASHSEED"] = str(seed)
+
+
+def transform_dataset(dataset):
+    # Transform the dataset to PyTorch Geometric Data objects
+    transformed_dataset = []
+    GCNNorm = T.GCNNorm(add_self_loops=True)
+    for graph in dataset:
+        # Create a PyTorch Geometric Data object
+        data = GCNNorm(graph)
+        # Add the graph to the transformed dataset
+        transformed_dataset.append(data)
+    return transformed_dataset
 
 
 def compute_scaling(dataset):

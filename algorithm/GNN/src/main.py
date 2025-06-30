@@ -58,7 +58,9 @@ def main():
     # Load dataset
     dataset, _, _ = pre.load_dataset()
 
-    # Scale dataset
+    # Transform and scale dataset
+    print("Transforming dataset")
+    dataset = pre.transform_dataset(dataset)
     print("Scaling dataset")
     scaling = pre.compute_scaling(dataset)
     scaled_dataset = pre.scale_dataset(dataset, scaling)
@@ -115,7 +117,8 @@ def main():
                 "Warning: the number of trainable parameters is greater than the dataset size"
             )
 
-        # Move model to device
+        # Compile and move model to device
+        model = torch.compile(model, dynamic=True, fullgraph=True)
         model.to(device)
 
         # Training

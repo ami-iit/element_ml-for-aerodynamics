@@ -31,7 +31,7 @@ class GNN(nn.Module):
         # GNN layers
         self.conv_layers = nn.ModuleList(
             [
-                gnn.GCNConv(Const.latent_dim, Const.latent_dim)
+                gnn.GCNConv(Const.latent_dim, Const.latent_dim, normalize=False)
                 for _ in range(Const.gnc_layers)
             ]
         )
