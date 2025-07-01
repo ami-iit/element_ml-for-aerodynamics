@@ -26,10 +26,12 @@ class FlowImporter:
         for s_name, s_data in self.surface.items():
             s_data.faces = data[s_name]["faces"]
             s_data.edges = data[s_name]["edges"]
-            w_graph_nodes = data[s_name]["nodes"] / 1000
+            s_data.w_mesh_nodes = data[s_name]["nodes"] / 1000
             # mesh nodes are stored in local reference frame
             link_H_world = link_H_world_dict[s_name]
-            s_data.mesh_nodes = self.transform_points(link_H_world, w_graph_nodes)
+            s_data.l_mesh_nodes = self.transform_points(
+                link_H_world, s_data.w_mesh_nodes
+            )
         return
 
     def import_data(self, data_path, config_name, pitch, yaw):
@@ -66,7 +68,7 @@ class FlowImporter:
         for s_data in self.surface.values():
             # Reorder data nodes to match mesh_nodes order
             indices = []
-            for node in s_data.mesh_nodes:
+            for node in s_data.l_mesh_nodes:
                 distances = np.linalg.norm(s_data.l_nodes - node, axis=1)
                 indices.append(np.argmin(distances))
             s_data.l_nodes = s_data.l_nodes[indices]
@@ -89,7 +91,7 @@ class FlowImporter:
         self.edges = np.empty(shape=(0, 2))
         for s_data in self.surface.values():
             edge_bias = len(self.nodes)
-            self.nodes = np.append(self.nodes, s_data.mesh_nodes, axis=0)
+            self.nodes = np.append(self.nodes, s_data.w_mesh_nodes, axis=0)
             self.press_coeff = np.append(self.press_coeff, s_data.press_coeff)
             self.fric_coeff = np.append(self.fric_coeff, s_data.fric_coeff, axis=0)
             self.areas = np.append(self.areas, s_data.areas[:, None], axis=0)
