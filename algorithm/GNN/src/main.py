@@ -82,7 +82,7 @@ def main():
     train_dl = DataLoader(data_train, batch_size=Const.batch_size, shuffle=False)
     val_dl = DataLoader(data_val, batch_size=Const.batch_size, shuffle=False)
 
-    if Const.mode == "gnn":
+    if Const.mode == "gnn" or Const.mode == "gae":
         # Define the input and output dimensions
         Const.in_dim = len(in_idxs) if Const.in_dim is None else Const.in_dim
         Const.out_dim = len(Const.flow_idx) if Const.out_dim is None else Const.out_dim
@@ -97,7 +97,10 @@ def main():
             print(f"Test set size: [{test_len},{Const.in_dim}]")
 
         # Initialize the GNN model and weights
-        model = mod.GNN()
+        if Const.mode == "gnn":
+            model = mod.GNN()
+        elif Const.mode == "gae":
+            model = mod.GAE()
         mod.initialize_weights_xavier_normal(model)
         # Define loss function
         loss = torch.nn.MSELoss()
@@ -146,94 +149,95 @@ def main():
         # Save the indices of the the sub-sets into an xlsx file
         out.write_datasets(indices, len(data_train), len(data_val))
 
-    elif Const.mode == "mlp-tuning" or Const.mode == "mlpn-tuning":
+    # NOT YET IMPLEMENTED
+    # elif Const.mode == "gnn-tuning" or Const.mode == "gae-tuning":
 
-        Const.in_dim = len(in_idxs) if Const.in_dim is None else Const.in_dim
-        Const.out_dim = len(Const.flow_idx) if Const.out_dim is None else Const.out_dim
+    #     Const.in_dim = len(in_idxs) if Const.in_dim is None else Const.in_dim
+    #     Const.out_dim = len(Const.flow_idx) if Const.out_dim is None else Const.out_dim
 
-        # Compute dataset sizes
-        train_len = np.sum([g.x.shape[0] for g in data_train])
-        print(f"Train set size: [{train_len},{Const.in_dim}]")
-        val_len = np.sum([g.x.shape[0] for g in data_val])
-        print(f"Validation set size: [{val_len},{Const.in_dim}]")
-        if data_test:
-            test_len = np.sum([g.x.shape[0] for g in data_test])
-            print(f"Test set size: [{test_len},{Const.in_dim}]")
+    #     # Compute dataset sizes
+    #     train_len = np.sum([g.x.shape[0] for g in data_train])
+    #     print(f"Train set size: [{train_len},{Const.in_dim}]")
+    #     val_len = np.sum([g.x.shape[0] for g in data_val])
+    #     print(f"Validation set size: [{val_len},{Const.in_dim}]")
+    #     if data_test:
+    #         test_len = np.sum([g.x.shape[0] for g in data_test])
+    #         print(f"Test set size: [{test_len},{Const.in_dim}]")
 
-        Const.optuna_trial = 0
+    #     Const.optuna_trial = 0
 
-        # Define the objective function
-        def objective(trial):
-            print(f"Optuna trial: {Const.optuna_trial}/{Const.n_trials}")
-            Const.batch_size = trial.suggest_int("batch_size", 1, 10)
-            Const.initial_lr = trial.suggest_float("initial_lr", 1e-4, 1e-2)
-            Const.reg_par = trial.suggest_float("reg_par", 1e-9, 1e-5)
-            Const.hid_layers = trial.suggest_int("hid_layers", 1, 2)
-            hid_dim_pow = trial.suggest_int("hid_dim_pow", 4, 5)
-            Const.hid_dim = int(2**hid_dim_pow)
-            # Initialize the GNN model and weights
-            model = mod.GNN()
-            mod.initialize_weights_xavier_normal(model)
-            # Define loss function
-            loss = torch.nn.MSELoss()
-            # Define optimizer
-            optimizer = torch.optim.Adam(
-                model.parameters(), lr=Const.initial_lr, weight_decay=Const.reg_par
-            )
-            # Print model summary
-            print("Model summary")
-            print(summary(model, data_train[0]))
-            # Count the number of trainable parameters
-            train_param = sum(p.numel() for p in model.parameters() if p.requires_grad)
-            print(f"\nTotal number of trainable parameters: {train_param}")
-            if train_len < train_param:
-                print(
-                    "Warning: the number of trainable parameters is greater than the dataset size"
-                )
-            # Move model to device
-            model.to(device)
-            # Training
-            history, model, best_model = train.train_GNN(
-                train_dl, val_dl, model, loss, optimizer, device
-            )
-            # Compute optuna score
-            train_loss = history[-1][1]
-            val_loss = history[-1][2]
-            if Const.wandb_logging:
-                wandb.log(
-                    {
-                        "lr": Const.initial_lr,
-                        "reg_par": Const.reg_par,
-                        "hid_layers": Const.hid_layers,
-                        "hid_dim": Const.hid_dim,
-                        "pareto_train_loss": train_loss,
-                        "pareto_val_loss": val_loss,
-                    }
-                )
-            Const.optuna_trial += 1
-            return val_loss
+    #     # Define the objective function
+    #     def objective(trial):
+    #         print(f"Optuna trial: {Const.optuna_trial}/{Const.n_trials}")
+    #         Const.batch_size = trial.suggest_int("batch_size", 1, 10)
+    #         Const.initial_lr = trial.suggest_float("initial_lr", 1e-4, 1e-2)
+    #         Const.reg_par = trial.suggest_float("reg_par", 1e-9, 1e-5)
+    #         Const.hid_layers = trial.suggest_int("hid_layers", 1, 2)
+    #         hid_dim_pow = trial.suggest_int("hid_dim_pow", 4, 5)
+    #         Const.hid_dim = int(2**hid_dim_pow)
+    #         # Initialize the GNN model and weights
+    #         model = mod.GNN()
+    #         mod.initialize_weights_xavier_normal(model)
+    #         # Define loss function
+    #         loss = torch.nn.MSELoss()
+    #         # Define optimizer
+    #         optimizer = torch.optim.Adam(
+    #             model.parameters(), lr=Const.initial_lr, weight_decay=Const.reg_par
+    #         )
+    #         # Print model summary
+    #         print("Model summary")
+    #         print(summary(model, data_train[0]))
+    #         # Count the number of trainable parameters
+    #         train_param = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    #         print(f"\nTotal number of trainable parameters: {train_param}")
+    #         if train_len < train_param:
+    #             print(
+    #                 "Warning: the number of trainable parameters is greater than the dataset size"
+    #             )
+    #         # Move model to device
+    #         model.to(device)
+    #         # Training
+    #         history, model, best_model = train.train_GNN(
+    #             train_dl, val_dl, model, loss, optimizer, device
+    #         )
+    #         # Compute optuna score
+    #         train_loss = history[-1][1]
+    #         val_loss = history[-1][2]
+    #         if Const.wandb_logging:
+    #             wandb.log(
+    #                 {
+    #                     "lr": Const.initial_lr,
+    #                     "reg_par": Const.reg_par,
+    #                     "hid_layers": Const.hid_layers,
+    #                     "hid_dim": Const.hid_dim,
+    #                     "pareto_train_loss": train_loss,
+    #                     "pareto_val_loss": val_loss,
+    #                 }
+    #             )
+    #         Const.optuna_trial += 1
+    #         return val_loss
 
-        # Define the study
-        study = optuna.create_study(directions=["minimize"])
-        study.optimize(objective, n_trials=Const.n_trials)
+    #     # Define the study
+    #     study = optuna.create_study(directions=["minimize"])
+    #     study.optimize(objective, n_trials=Const.n_trials)
 
-        # get the output
-        pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
-        complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
+    #     # get the output
+    #     pruned_trials = study.get_trials(deepcopy=False, states=[TrialState.PRUNED])
+    #     complete_trials = study.get_trials(deepcopy=False, states=[TrialState.COMPLETE])
 
-        print("Study statistics: ")
-        print("  Number of finished trials: ", len(study.trials))
-        print("  Number of pruned trials: ", len(pruned_trials))
-        print("  Number of complete trials: ", len(complete_trials))
+    #     print("Study statistics: ")
+    #     print("  Number of finished trials: ", len(study.trials))
+    #     print("  Number of pruned trials: ", len(pruned_trials))
+    #     print("  Number of complete trials: ", len(complete_trials))
 
-        print("Best trial:")
-        trial = study.best_trial
+    #     print("Best trial:")
+    #     trial = study.best_trial
 
-        print("  Value: ", trial.value)
+    #     print("  Value: ", trial.value)
 
-        print("  Params: ")
-        for key, value in trial.params.items():
-            print("    {}: {}".format(key, value))
+    #     print("  Params: ")
+    #     for key, value in trial.params.items():
+    #         print("    {}: {}".format(key, value))
 
     else:
         sys.exit("\nERROR: " + Const.mode + " mode not existing.\nTerminating!\n")

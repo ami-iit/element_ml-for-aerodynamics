@@ -12,6 +12,13 @@ from modules.constants import Const
 
 
 class GNN(nn.Module):
+    """
+    Vanilla Graph Neural Network (GNN) model:
+    input -> encoder -> GNC -> decoder -> output
+    - MLP with homogeneus layer dimensions for encoder and decoder
+    - GNN layers with GCNConv for graph convolution
+    """
+
     def __init__(self):
         super(GNN, self).__init__()
         # Encoder layers
@@ -48,6 +55,64 @@ class GNN(nn.Module):
                 for _ in range(Const.dec_layers)
             ],
             nn.Linear(Const.dec_dim, Const.out_dim),  # Output layer
+        )
+
+    def forward(self, x, edge_index):
+        out = self.encoder(x)
+        for conv in self.conv_layers:
+            out = conv(out, edge_index)
+            out = F.relu(out)
+            out = F.dropout(out, p=Const.dropout, training=self.training)
+        output = self.decoder(out)
+        return output
+
+
+class GAE(nn.Module):
+    """
+    Graph AutoEncoder (GAE) model:
+    input -> encoder -> GNC -> decoder -> output
+    - MLP with decreasing/increasing layer dimensions for encoder and decoder
+    - GNN layers with GCNConv for graph convolution
+    """
+
+    def __init__(self):
+        super(GAE, self).__init__()
+        # Encoder layers
+        rate = (Const.enc_dim - Const.latent_dim) / (Const.enc_layers - 1)
+        enc_dims = [int(Const.enc_dim - rate * i) for i in range(Const.enc_layers)]
+        self.encoder = nn.Sequential(
+            nn.Linear(Const.in_dim, Const.enc_dim),  # Input layer
+            nn.ReLU(),
+            *[  # Hidden layers
+                nn.Sequential(
+                    nn.Linear(enc_dims[i], enc_dims[i + 1]),
+                    nn.ReLU(),
+                    nn.Dropout(p=Const.dropout),
+                )
+                for i in range(Const.enc_layers - 1)
+            ],
+        )
+        # GNN layers
+        self.conv_layers = nn.ModuleList(
+            [
+                gnn.GCNConv(Const.latent_dim, Const.latent_dim, normalize=False)
+                for _ in range(Const.gnc_layers)
+            ]
+        )
+        # Decoder layers
+        rate = (Const.dec_dim - Const.latent_dim) / (Const.enc_layers - 1)
+        dec_dims = [int(Const.latent_dim + rate * i) for i in range(Const.dec_layers)]
+        self.decoder = nn.Sequential(
+            *[  # Hidden layers
+                nn.Sequential(
+                    nn.Linear(dec_dims[i], dec_dims[i + 1]),
+                    nn.ReLU(),
+                    nn.Dropout(p=Const.dropout),
+                )
+                for i in range(Const.dec_layers - 1)
+            ],
+            nn.Linear(Const.dec_dim, Const.out_dim),  # Output layer
+            nn.ReLU(),
         )
 
     def forward(self, x, edge_index):
