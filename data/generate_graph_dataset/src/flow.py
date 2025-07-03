@@ -91,7 +91,7 @@ class FlowImporter:
         self.edges = np.empty(shape=(0, 2))
         for s_data in self.surface.values():
             edge_bias = len(self.nodes)
-            self.nodes = np.append(self.nodes, s_data.w_mesh_nodes, axis=0)
+            self.nodes = np.append(self.nodes, s_data.w_nodes, axis=0)
             self.press_coeff = np.append(self.press_coeff, s_data.press_coeff)
             self.fric_coeff = np.append(self.fric_coeff, s_data.fric_coeff, axis=0)
             self.areas = np.append(self.areas, s_data.areas[:, None], axis=0)
