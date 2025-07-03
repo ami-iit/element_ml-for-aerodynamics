@@ -66,9 +66,9 @@ def main():
     scaled_dataset = pre.scale_dataset(dataset, scaling)
 
     # Select input variables
-    in_idxs = Const.pos_idx + Const.vel_idx + Const.face_normal_idx
+    in_idxs = Const.vel_idx + Const.pos_idx + Const.face_normal_idx
     for graph in scaled_dataset:
-        graph.x = graph.x[:, Const.pos_idx + Const.vel_idx + Const.face_normal_idx]
+        graph.x = graph.x[:, in_idxs]
 
     # Split dataset
     data_train, data_val, data_test, indices = pre.split_dataset(
@@ -243,10 +243,11 @@ def main():
         sys.exit("\nERROR: " + Const.mode + " mode not existing.\nTerminating!\n")
 
     # WANDB LOGGING
-    if Const.wandb_logging and Const.mode != "mlp-tuning":
+    if Const.wandb_logging and Const.mode not in ["gnn-tuning", "gae-tuning"]:
         # Log the aerodynamic forces error of the training set
         log.log_aerodynamic_forces_error(
             [dataset[i] for i in train_idx.tolist()],
+            [scaled_dataset[i] for i in train_idx.tolist()],
             model,
             device,
             scaling,
@@ -255,6 +256,7 @@ def main():
         # Log the aerodynamic forces error of the validation set
         log.log_aerodynamic_forces_error(
             [dataset[i] for i in val_idx.tolist()],
+            [scaled_dataset[i] for i in val_idx.tolist()],
             model,
             device,
             scaling,
@@ -264,6 +266,7 @@ def main():
         if data_test:
             log.log_aerodynamic_forces_error(
                 [dataset[i] for i in test_idx.tolist()],
+                [scaled_dataset[i] for i in test_idx.tolist()],
                 model,
                 device,
                 scaling,

@@ -31,6 +31,7 @@ def init_wandb_project(options):
 
 def log_aerodynamic_forces_error(
     dataset,
+    scaled_dataset,
     model,
     device,
     scaling,
@@ -38,18 +39,13 @@ def log_aerodynamic_forces_error(
 ):
     print(f"Computing and logging {label} aerodynamic forces error")
     aero_force_errors = np.zeros((len(dataset), 3))
-    for i, data in enumerate(dataset):
-        # Get input: v_x, v_y, v_z, x, y, z
+    for i, zip_data in enumerate(zip(dataset, scaled_dataset)):
+        data, scaled_data = zip_data
+        # Get input: v_x, v_y, v_z, x, y, z, n_x, n_y, n_z
         if Const.in_dim == 6:
-            x = data.x[:, Const.vel_idx + Const.pos_idx]
+            x = scaled_data.x[:, Const.vel_idx + Const.pos_idx]
         elif Const.in_dim == 9:
-            x = data.x[:, Const.vel_idx + Const.pos_idx + Const.face_normal_idx]
-        # Scale input
-        x[:, :3] /= scaling[0]
-        if Const.scale_mode == "minmax":
-            x[:, 3:6] = (x[:, 3:6] - scaling[1]) / (scaling[2] - scaling[1])
-        elif Const.scale_mode == "standard":
-            x[:, 3:6] = (x[:, 3:6] - scaling[1]) / scaling[2]
+            x = scaled_data.x[:, Const.vel_idx + Const.pos_idx + Const.face_normal_idx]
         # Compute forward pass
         model.to(device)
         model.eval()

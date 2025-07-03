@@ -5,6 +5,7 @@ import wandb
 import open3d as o3d
 import matplotlib.cm as cm
 from matplotlib.colors import Normalize
+import copy
 
 from modules.constants import Const
 
@@ -61,23 +62,32 @@ class Run:
     def load_dataset(self, datafile_path: str):
         print(f"Loading dataset from: {datafile_path}")
         datafile = np.load(datafile_path, allow_pickle=True)
-        self.dataset = datafile["data"].tolist()["data"]
-        self.pitch_angles = np.array(datafile["data"].tolist()["pitch_angles"])
-        self.yaw_angles = np.array(datafile["data"].tolist()["yaw_angles"])
+        self.dataset = datafile["database"]
+        self.pitch_angles = datafile["pitch_angles"]
+        self.yaw_angles = datafile["yaw_angles"]
         print("Dataset loaded.")
 
-    def scale_dataset_minmax(self):
-        # WARNING: Don't use this method (referencing problems can occur!)
-        dtbs = self.dataset
-        for sample in range(len(self.dataset)):
-            dtbs[sample][:, Const.vel_idx] /= self.scaling[0]
-            dtbs[sample][:, Const.pos_idx] = (
-                dtbs[sample][:, Const.pos_idx] - self.scaling[1]
-            ) / (self.scaling[2] - self.scaling[1])
-            dtbs[sample][:, Const.flow_idx] = (
-                dtbs[sample][:, Const.flow_idx] - self.scaling[3]
-            ) / (self.scaling[4] - self.scaling[3])
-        self.scaled_database = dtbs
+    def scale_dataset(self):
+        scaling = self.scaling
+        # Deep copy each Data object to avoid shared references
+        scaled_dataset = [copy.deepcopy(graph) for graph in self.dataset]
+        for graph in scaled_dataset:
+            graph.x[:, Const.vel_idx] /= scaling[0]
+            if Const.scale_mode == "minmax":
+                graph.x[:, Const.pos_idx] = (graph.x[:, Const.pos_idx] - scaling[1]) / (
+                    scaling[2] - scaling[1]
+                )
+                graph.y[:, Const.flow_idx] = (
+                    graph.y[:, Const.flow_idx] - scaling[3]
+                ) / (scaling[4] - scaling[3])
+            elif Const.scale_mode == "standard":
+                graph.x[:, Const.pos_idx] = (
+                    graph.x[:, Const.pos_idx] - scaling[1].astype(np.float32)
+                ) / scaling[2].astype(np.float32)
+                graph.y[:, Const.flow_idx] = (
+                    graph.y[:, Const.flow_idx] - scaling[3].astype(np.float32)
+                ) / scaling[4].astype(np.float32)
+        self.scaled_dataset = scaled_dataset
         print("Dataset scaled.")
 
     def visualize_pointcloud(self, points, values, window_name="Open3D"):
@@ -117,24 +127,26 @@ class Run:
         self.aero_force_errors = np.zeros((len(self.dataset), 3))
         self.aero_forces_in = np.zeros((len(self.dataset), 3))
         self.aero_forces_out = np.zeros((len(self.dataset), 3))
-        for i, sim in enumerate(self.dataset):
+        for i, zip_data in enumerate(zip(self.dataset, self.scaled_dataset)):
+            data = zip_data[0]
+            scaled_data = zip_data[1]
             # Get input: v_x, v_y, v_z, x, y, z
-            if Const.in_dim == 6:  # MLP
-                input = sim[:, Const.vel_idx + Const.pos_idx]
-            elif Const.in_dim == 9:  # MLPN
-                input = sim[:, Const.vel_idx + Const.pos_idx + Const.face_normal_idx]
-            input[:, :3] /= self.scaling[0]
-            if scale_mode == "minmax":
-                input[:, 3:6] = (input[:, 3:6] - self.scaling[1]) / (
-                    self.scaling[2] - self.scaling[1]
-                )
-            elif scale_mode == "standard":
-                input[:, 3:6] = (input[:, 3:6] - self.scaling[1]) / self.scaling[2]
-            input = torch.tensor(input, dtype=torch.float32).to(self.device)
+            if Const.in_dim == 6:
+                x = scaled_data.x[:, Const.vel_idx + Const.pos_idx]
+            elif Const.in_dim == 9:
+                x = scaled_data.x[
+                    :, Const.vel_idx + Const.pos_idx + Const.face_normal_idx
+                ]
             # Compute forward pass
             self.model.to(self.device)
             self.model.eval()
-            output = self.model(input).detach().cpu().numpy()
+            output = (
+                self.model(x.to(self.device), scaled_data.edge_index.to(self.device))
+                .detach()
+                .cpu()
+                .numpy()
+            )
+            # Rescale output
             if scale_mode == "minmax":
                 output = output * (self.scaling[4] - self.scaling[3]) + self.scaling[3]
             elif scale_mode == "standard":
@@ -142,15 +154,15 @@ class Run:
             press_coeff = output[:, 0]
             fric_coeff = output[:, 1:]
             # Compute predicted centroidal aerodynamic force
-            face_normals = sim[:, Const.face_normal_idx]
-            areas = sim[:, Const.area_idx]
+            face_normals = data.x[:, Const.face_normal_idx].numpy()
+            areas = data.x[:, Const.area_idx].numpy()
             pressure = press_coeff.reshape(-1, 1) * dyn_press
             friction = fric_coeff * dyn_press
             d_force = pressure * face_normals * areas + friction * areas
             pred_aero_force = np.sum(d_force, axis=0)
             # Compute dataset aerodynamic force
-            pressure = sim[:, Const.flow_idx[0]].reshape(-1, 1) * dyn_press
-            friction = sim[:, Const.flow_idx[1:]] * dyn_press
+            pressure = data.y[:, Const.flow_idx[0]].numpy().reshape(-1, 1) * dyn_press
+            friction = data.y[:, Const.flow_idx[1:]].numpy() * dyn_press
             d_force = pressure * face_normals * areas + friction * areas
             dataset_aero_force = np.sum(d_force, axis=0)
             # Save data
