@@ -67,21 +67,34 @@ def main():
             # Set robot state and get link to world transformations
             robot.set_state(pitch, yaw, joint_pos)
             link_H_world = robot.compute_all_link_H_world()
+            base_H_world = robot.compute_link_H_world("root_link")
 
             # Compute relative wind velocity vector
             wind_velocity = fn.compute_wind_velocity(pitch, yaw, WIND_INTENSITY)
 
             # Import fluent data from all surfaces
             flow.import_data(data_path, config, pitch, yaw)
-            flow.transform_data(link_H_world, airspeed=17.0, air_dens=1.225)
+            flow.transform_data(
+                link_H_world,
+                base_H_world,
+                airspeed=17.0,
+                air_dens=1.225,
+            )
             flow.reorder_data()
             flow.assign_global_data()
 
             # Graph Data Transformation
             edge_index = torch.tensor(flow.edges, dtype=torch.long).t().contiguous()
-            wind_velocities = np.tile(wind_velocity, (flow.nodes.shape[0], 1))
-            x = np.hstack((wind_velocities, flow.nodes, flow.face_normals, flow.areas))
-            y = np.hstack((flow.press_coeff[:, None], flow.fric_coeff))
+            wind_velocities = np.tile(wind_velocity, (flow.b_nodes.shape[0], 1))
+            x = np.hstack(
+                (
+                    wind_velocities,
+                    flow.b_nodes,
+                    flow.b_face_normals,
+                    flow.areas,
+                )
+            )
+            y = np.hstack((flow.press_coeff[:, None], flow.b_fric_coeff))
             x = torch.tensor(x, dtype=torch.float)
             y = torch.tensor(y, dtype=torch.float)
             data = Data(x=x, y=y, edge_index=edge_index)

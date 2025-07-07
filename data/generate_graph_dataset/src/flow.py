@@ -41,21 +41,27 @@ class FlowImporter:
             data = pd.read_csv(filepath, sep="\s+", skiprows=1, header=None)
             s_data.w_nodes = data.values[:, 1:4]
             s_data.pressure = data.values[:, 4]
-            s_data.friction = data.values[:, 5:8]
+            s_data.w_friction = data.values[:, 5:8]
             s_data.w_face_areas = data.values[:, 9:12]
         return
 
-    def transform_data(self, link_H_world_dict, airspeed, air_dens):
+    def transform_data(self, link_H_world_dict, base_H_world, airspeed, air_dens):
         for s_name, s_data in self.surface.items():
             link_H_world = link_H_world_dict[s_name]
             # transform the data from world to reference link frame
             s_data.l_nodes = self.transform_points(link_H_world, s_data.w_nodes)
+            # transform the data from world to base frame
+            s_data.b_nodes = self.transform_points(base_H_world, s_data.w_nodes)
+            s_data.b_friction = self.rotate_vectors(base_H_world, s_data.w_friction)
+            s_data.b_face_areas = self.rotate_vectors(base_H_world, s_data.w_face_areas)
             # Transform variables to coefficients
             dyn_press = 0.5 * air_dens * airspeed**2
             s_data.press_coeff = s_data.pressure / dyn_press
-            s_data.fric_coeff = s_data.friction / dyn_press
+            s_data.w_fric_coeff = s_data.w_friction / dyn_press
+            s_data.b_fric_coeff = s_data.b_friction / dyn_press
             s_data.areas = np.linalg.norm(s_data.w_face_areas, axis=1)
             s_data.w_face_normals = s_data.w_face_areas / s_data.areas[:, None]
+            s_data.b_face_normals = s_data.b_face_areas / s_data.areas[:, None]
         return
 
     def transform_points(self, frame_1_H_frame_2, points):
@@ -63,6 +69,11 @@ class FlowImporter:
         start_coord = np.hstack((points, ones))
         end_coord = np.dot(frame_1_H_frame_2, start_coord.T).T
         return end_coord[:, :3]
+
+    def rotate_vectors(self, frame_1_H_frame_2, vectors):
+        frame_1_R_frame_2 = frame_1_H_frame_2[:3, :3]
+        rotated_vectors = np.dot(frame_1_R_frame_2, vectors.T).T
+        return rotated_vectors
 
     def reorder_data(self):
         for s_data in self.surface.values():
@@ -75,28 +86,43 @@ class FlowImporter:
             s_data.w_nodes = s_data.w_nodes[indices]
             s_data.pressure = s_data.pressure[indices]
             s_data.press_coeff = s_data.press_coeff[indices]
-            s_data.friction = s_data.friction[indices]
-            s_data.fric_coeff = s_data.fric_coeff[indices]
+            s_data.w_friction = s_data.w_friction[indices]
+            s_data.b_friction = s_data.b_friction[indices]
+            s_data.w_fric_coeff = s_data.w_fric_coeff[indices]
+            s_data.b_fric_coeff = s_data.b_fric_coeff[indices]
             s_data.areas = s_data.areas[indices]
             s_data.w_face_normals = s_data.w_face_normals[indices]
+            s_data.b_face_normals = s_data.b_face_normals[indices]
             s_data.edges = s_data.edges[indices]
         return
 
     def assign_global_data(self):
-        self.nodes = np.empty(shape=(0, 3))
+        self.w_nodes = np.empty(shape=(0, 3))
+        self.b_nodes = np.empty(shape=(0, 3))
         self.press_coeff = np.empty(shape=(0,))
-        self.fric_coeff = np.empty(shape=(0, 3))
+        self.w_fric_coeff = np.empty(shape=(0, 3))
+        self.b_fric_coeff = np.empty(shape=(0, 3))
         self.areas = np.empty(shape=(0, 1))
-        self.face_normals = np.empty(shape=(0, 3))
+        self.w_face_normals = np.empty(shape=(0, 3))
+        self.b_face_normals = np.empty(shape=(0, 3))
         self.edges = np.empty(shape=(0, 2))
         for s_data in self.surface.values():
-            edge_bias = len(self.nodes)
-            self.nodes = np.append(self.nodes, s_data.w_nodes, axis=0)
+            edge_bias = len(self.w_nodes)
+            self.w_nodes = np.append(self.w_nodes, s_data.w_nodes, axis=0)
+            self.b_nodes = np.append(self.b_nodes, s_data.b_nodes, axis=0)
             self.press_coeff = np.append(self.press_coeff, s_data.press_coeff)
-            self.fric_coeff = np.append(self.fric_coeff, s_data.fric_coeff, axis=0)
+            self.w_fric_coeff = np.append(
+                self.w_fric_coeff, s_data.w_fric_coeff, axis=0
+            )
+            self.b_fric_coeff = np.append(
+                self.b_fric_coeff, s_data.b_fric_coeff, axis=0
+            )
             self.areas = np.append(self.areas, s_data.areas[:, None], axis=0)
-            self.face_normals = np.append(
-                self.face_normals, s_data.w_face_normals, axis=0
+            self.w_face_normals = np.append(
+                self.w_face_normals, s_data.w_face_normals, axis=0
+            )
+            self.b_face_normals = np.append(
+                self.b_face_normals, s_data.b_face_normals, axis=0
             )
             self.edges = np.append(self.edges, s_data.edges + edge_bias, axis=0)
         return
