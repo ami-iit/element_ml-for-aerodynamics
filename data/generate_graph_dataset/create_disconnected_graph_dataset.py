@@ -123,6 +123,15 @@ def main():
             pickle.dump(dataset[config], f, protocol=4)
         print(f"Dual graph dataset for {config} configuration saved.")
 
+        # Test if the dataset is generated correctly
+        pang, yang = 40, 0
+        sample = np.where((pitch_angles == pang) & (yaw_angles == yang))[0][0]
+        flow.visualize_pointcloud(
+            points=dataset[config]["database"][sample].x[:, 3:6].numpy(),
+            values=dataset[config]["database"][sample].y[:, 0].numpy(),
+            window_name=f"Database sample for {config} configuration at {pang}° pitch and {yang}° yaw",
+        )
+
 
 if __name__ == "__main__":
     main()

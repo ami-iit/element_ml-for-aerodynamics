@@ -2,6 +2,9 @@ import numpy as np
 import pandas as pd
 from scipy.spatial.transform import Rotation as R
 from dataclasses import dataclass, field
+import open3d as o3d
+from matplotlib.colors import Normalize
+from matplotlib import cm
 
 
 @dataclass
@@ -84,6 +87,7 @@ class FlowImporter:
                 indices.append(np.argmin(distances))
             s_data.l_nodes = s_data.l_nodes[indices]
             s_data.w_nodes = s_data.w_nodes[indices]
+            s_data.b_nodes = s_data.b_nodes[indices]
             s_data.pressure = s_data.pressure[indices]
             s_data.press_coeff = s_data.press_coeff[indices]
             s_data.w_friction = s_data.w_friction[indices]
@@ -126,3 +130,35 @@ class FlowImporter:
             )
             self.edges = np.append(self.edges, s_data.edges + edge_bias, axis=0)
         return
+
+    def visualize_pointcloud(self, points, values, window_name="Open3D"):
+        # Normalize the colormap
+        norm = Normalize(vmin=-2, vmax=1)
+        normalized_flow_variable = norm(values)
+        colormap = cm.jet
+        colors = colormap(normalized_flow_variable)[:, :3]
+        # Create a point cloud from the dataset
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(points)
+        pcd.colors = o3d.utility.Vector3dVector(colors)
+        # Create a coordinate frame
+        frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
+            size=0.2, origin=[0, 0, 0]
+        )
+        # Set visualization parameters
+        zoom = 0.75
+        x_cen = (points[:, 0].max() + points[:, 0].min()) / 2
+        y_cen = (points[:, 1].max() + points[:, 1].min()) / 2
+        z_cen = (points[:, 2].max() + points[:, 2].min()) / 2
+        center = [x_cen, y_cen, z_cen]
+        front = [1.0, 0.0, 1.0]
+        up = [0.0, 1.0, 0.0]
+        # Display the pointcloud
+        o3d.visualization.draw_geometries(
+            [frame, pcd],
+            zoom=zoom,
+            lookat=center,
+            front=front,
+            up=up,
+            window_name=window_name,
+        )
