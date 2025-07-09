@@ -4,6 +4,7 @@ import torch
 import wandb
 import open3d as o3d
 import matplotlib.cm as cm
+import torch_geometric.transforms as T
 from matplotlib.colors import Normalize
 import copy
 
@@ -11,8 +12,9 @@ from modules.constants import Const
 
 
 class Run:
-    def __init__(self):
+    def __init__(self, robot):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.robot = robot
 
     def load_train_from_wandb(self, project_path: str, run_name: str):
         print(f"Loading model from: {project_path}/{run_name}")
@@ -28,7 +30,7 @@ class Run:
         # Get model
         model_artifact = api.artifact(project_path + "/model:" + run_name)
         self.model = torch.jit.load(
-            model_artifact.download() + r"/scripted_model.pt"
+            model_artifact.download() + r"/scripted_model_best.pt"
         ).to(self.device)
         self.model.eval()
         # Get scaling parameters
@@ -66,6 +68,17 @@ class Run:
         self.pitch_angles = datafile["pitch_angles"]
         self.yaw_angles = datafile["yaw_angles"]
         print("Dataset loaded.")
+
+    def transform_dataset(self):
+        # Transform the dataset to PyTorch Geometric Data objects
+        transformed_dataset = []
+        GCNNorm = T.GCNNorm(add_self_loops=True)
+        for graph in self.dataset:
+            # Create a PyTorch Geometric Data object
+            data = GCNNorm(graph)
+            # Add the graph to the transformed dataset
+            transformed_dataset.append(data)
+        self.dataset = transformed_dataset
 
     def scale_dataset(self):
         scaling = self.scaling
@@ -123,13 +136,11 @@ class Run:
         )
 
     def compute_aerodynamic_forces(self, wind_speed: float, scale_mode: str = "minmax"):
-        dyn_press = 0.5 * 1.225 * wind_speed**2
         self.aero_force_errors = np.zeros((len(self.dataset), 3))
         self.aero_forces_in = np.zeros((len(self.dataset), 3))
         self.aero_forces_out = np.zeros((len(self.dataset), 3))
         for i, zip_data in enumerate(zip(self.dataset, self.scaled_dataset)):
-            data = zip_data[0]
-            scaled_data = zip_data[1]
+            data, scaled_data = zip_data
             # Get input: v_x, v_y, v_z, x, y, z
             if Const.in_dim == 6:
                 x = scaled_data.x[:, Const.vel_idx + Const.pos_idx]
@@ -141,7 +152,7 @@ class Run:
             self.model.to(self.device)
             self.model.eval()
             output = (
-                self.model(x.to(self.device), scaled_data.edge_index.to(self.device))
+                self.model(x.to(self.device), data.edge_index.to(self.device))
                 .detach()
                 .cpu()
                 .numpy()
@@ -154,17 +165,25 @@ class Run:
             press_coeff = output[:, 0]
             fric_coeff = output[:, 1:]
             # Compute predicted centroidal aerodynamic force
+            dyn_press = 0.5 * 1.225 * wind_speed**2
             face_normals = data.x[:, Const.face_normal_idx].numpy()
             areas = data.x[:, Const.area_idx].numpy()
             pressure = press_coeff.reshape(-1, 1) * dyn_press
             friction = fric_coeff * dyn_press
             d_force = pressure * face_normals * areas + friction * areas
-            pred_aero_force = np.sum(d_force, axis=0)
+            pred_body_force = np.sum(d_force, axis=0)
             # Compute dataset aerodynamic force
             pressure = data.y[:, Const.flow_idx[0]].numpy().reshape(-1, 1) * dyn_press
             friction = data.y[:, Const.flow_idx[1:]].numpy() * dyn_press
             d_force = pressure * face_normals * areas + friction * areas
-            dataset_aero_force = np.sum(d_force, axis=0)
+            dataset_body_force = np.sum(d_force, axis=0)
+            # rotate forces to aerodynamic frame
+            pitch_angle = self.pitch_angles[i]
+            yaw_angle = self.yaw_angles[i]
+            self.robot.set_state(pitch_angle, yaw_angle, np.zeros(self.robot.nDOF))
+            world_H_base = self.robot.compute_world_H_link("root_link")
+            pred_aero_force = np.dot(world_H_base[:3, :3], pred_body_force)
+            dataset_aero_force = np.dot(world_H_base[:3, :3], dataset_body_force)
             # Save data
             self.aero_forces_in[i, :] = dataset_aero_force
             self.aero_forces_out[i, :] = pred_aero_force
