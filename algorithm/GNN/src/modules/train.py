@@ -75,8 +75,11 @@ def train_GNN(train_dataloader, val_dataloader, model, loss, optimizer, device):
             best_epoch = epoch
             min_val_loss = val_loss_avg[-1]
 
-        # Update learning rate
-        lr_history.append(scheduler.get_last_lr()[0])
+        # Log (and eventually update) learning rate
+        if Const.lr_scheduler is None:
+            lr_history.append(optimizer.param_groups[0]["lr"])
+        else:
+            lr_history.append(scheduler.get_last_lr()[0])
         if Const.lr_scheduler == "linear":
             if epoch < Const.lr_iters:
                 scheduler.step()
