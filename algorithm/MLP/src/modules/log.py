@@ -79,14 +79,14 @@ def log_aerodynamic_forces_error(
     # Compute Mean Squared Error
     aero_force_rmse = np.sqrt(np.mean(aero_force_errors**2, axis=0))
     # Display MSE
-    print(f"RMSE Drag Force ({label}): {aero_force_rmse[2]}")
-    print(f"RMSE Lift Force ({label}): {aero_force_rmse[1]}")
-    print(f"RMSE Side Force ({label}): {aero_force_rmse[0]}")
+    print(f"RMSE X Force ({label}): {aero_force_rmse[0]}")
+    print(f"RMSE Y Force ({label}): {aero_force_rmse[1]}")
+    print(f"RMSE Z Force ({label}): {aero_force_rmse[2]}")
     # Log global errors
     wandb.log(
         {
-            f"RMSE Drag Force ({label})": aero_force_rmse[2],
-            f"RMSE Lift Force ({label})": aero_force_rmse[1],
-            f"RMSE Side Force ({label})": aero_force_rmse[0],
+            f"RMSE X Force ({label})": aero_force_rmse[0],
+            f"RMSE Y Force ({label})": aero_force_rmse[1],
+            f"RMSE Z Force ({label})": aero_force_rmse[2],
         }
     )
