@@ -2,7 +2,9 @@ name: "Task 🛠️"
 description: "Create a new task with a clear description and Definition of Done (DoD)"
 title: "Verb-imperative-form, object-of-action, rest-of-phrase"
 labels: ["task"]
-assignees: []
+projects:
+  - "ami-iit/23"
+  - "ami-iit/29"
 
 body:
   - type: markdown
