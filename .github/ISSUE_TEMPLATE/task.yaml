@@ -1,0 +1,34 @@
+name: "Task 🛠️"
+description: "Create a new task with a clear description and Definition of Done (DoD)"
+title: "Verb-imperative-form, object-of-action, rest-of-phrase"
+labels: ["task"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: "## 📋 Task Description"
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: "Task description ✨"
+      description: "What needs doing and why?"
+      placeholder: "As a …, I want …, so that …"
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: "## ✅ Definition of Done"
+
+  - type: textarea
+    id: dod
+    attributes:
+      label: "Definition of Done ✅"
+      description: "List acceptance criteria."
+      placeholder: |
+        - [ ] …
+        - [ ] …
+    validations:
+      required: true
