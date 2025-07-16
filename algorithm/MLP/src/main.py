@@ -107,19 +107,24 @@ def main():
     print(f"Test set size: {data_test[:, in_idxs].shape}") if data_test_list else None
 
     if Const.mode == "mlp" or Const.mode == "mlpn":
-        # Define the MLP model
-        Const.in_dim = len(in_idxs) if Const.in_dim is None else Const.in_dim
-        Const.out_dim = len(Const.flow_idx) if Const.out_dim is None else Const.out_dim
-        model = mod.MLP().to(device)
-
-        # Initialize weights
-        mod.initialize_weights_xavier_normal(model)
         # Define loss function
         loss = torch.nn.MSELoss()
-        # Define optimizer
-        optimizer = torch.optim.Adam(
-            model.parameters(), lr=Const.initial_lr, weight_decay=Const.reg_par
-        )
+
+        if Const.restart:
+            model, optimizer = mod.load_wandb_model()
+        else:
+            # Define the MLP model
+            Const.in_dim = len(in_idxs) if Const.in_dim is None else Const.in_dim
+            Const.out_dim = (
+                len(Const.flow_idx) if Const.out_dim is None else Const.out_dim
+            )
+            model = mod.MLP().to(device)
+            # Initialize weights
+            mod.initialize_weights_xavier_normal(model)
+            # Define optimizer
+            optimizer = torch.optim.Adam(
+                model.parameters(), lr=Const.initial_lr, weight_decay=Const.reg_par
+            )
 
         # Print model summary
         print("Model summary")
