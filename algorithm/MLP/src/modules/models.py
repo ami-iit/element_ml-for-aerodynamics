@@ -63,15 +63,13 @@ def initialize_weights_xavier_normal(model):
             torch.nn.init.xavier_uniform_(layer.weight, gain=1.0)
 
 
-def load_wandb_model():
+def load_wandb_model(model, optimizer):
     # Get model checkpoint from wandb
     api = wandb.Api()
     model_artifact = api.artifact(Const.project + "/model:" + Const.trial_name)
-    checkpoint = torch.jit.load(model_artifact.download() + r"/ckp_model.pt")
+    checkpoint = torch.load(model_artifact.download() + r"/ckp_model.pt")
     # Load model and set weights
-    model = checkpoint["model"].to(Const.device)
     model.load_state_dict(checkpoint["model_state"])
     # Load optimizer and set state
-    optimizer = checkpoint["optimizer"].to(Const.device)
     optimizer.load_state_dict(checkpoint["optimizer_state"])
     return model, optimizer
