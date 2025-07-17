@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --job-name=ironcub_aero_mlp       # Name of the job
+#SBATCH --job-name=ironcub_aero_gnn       # Name of the job
 #SBATCH --ntasks=1                        # Number of tasks (processes)
 #SBATCH --cpus-per-task=4                 # CPUs per task
 #SBATCH --mem=80G                         # Memory per node or per task
