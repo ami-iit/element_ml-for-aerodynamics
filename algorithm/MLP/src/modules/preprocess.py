@@ -62,7 +62,9 @@ def load_dataset():
     dataset = data["data"]
     pitch_angles = data["pitch_angles"]
     yaw_angles = data["yaw_angles"]
-    return dataset, pitch_angles, yaw_angles
+    part_start_ids = data["part_start_ids"]
+    part_end_ids = data["part_end_ids"]
+    return dataset, pitch_angles, yaw_angles, part_start_ids, part_end_ids
 
 
 def set_seed(seed: int = 42) -> None:

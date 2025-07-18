@@ -51,7 +51,7 @@ def main():
     pre.print_options(config_options, default_values)
 
     # Load dataset
-    dataset, _, _ = pre.load_dataset()
+    dataset, _, _, _, _ = pre.load_dataset()
 
     # Initialize device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -86,20 +86,13 @@ def main():
         data_test = pre.scale_dataset(data_test, scaling)
 
     # Create dataloaders
+    Const.sim_len = data_train_list[0].shape[0]
     if Const.mode == "mlp" or Const.mode == "mlp-tuning":
         in_idxs = Const.vel_idx + Const.pos_idx
     elif Const.mode == "mlpn":
         in_idxs = Const.vel_idx + Const.pos_idx + Const.face_normal_idx
-    train_dataset = mod.MlpDataset(
-        data_train[:, in_idxs],
-        data_train[:, Const.flow_idx],
-        Const.batch_size,
-    )
-    val_dataset = mod.MlpDataset(
-        data_val[:, in_idxs],
-        data_val[:, Const.flow_idx],
-        Const.batch_size,
-    )
+    train_dataset = mod.MlpDataset(data_train, in_idxs)
+    val_dataset = mod.MlpDataset(data_val, in_idxs)
     train_dl = DataLoader(train_dataset, batch_size=1, shuffle=False)
     val_dl = DataLoader(val_dataset, batch_size=1, shuffle=False)
     print(f"Train set size: {data_train[:, in_idxs].shape}")
@@ -112,7 +105,10 @@ def main():
         Const.out_dim = len(Const.flow_idx) if Const.out_dim is None else Const.out_dim
         model = mod.MLP().to(device)
         # Define loss function
-        loss = torch.nn.MSELoss()
+        if Const.loss == "aeroforce":
+            loss = mod.AeroForceLoss()
+        else:
+            loss = torch.nn.MSELoss()
         # Define optimizer
         optimizer = torch.optim.Adam(
             model.parameters(), lr=Const.initial_lr, weight_decay=Const.reg_par
@@ -188,7 +184,10 @@ def main():
             # Initialize weights
             mod.initialize_weights_xavier_normal(model)
             # Define loss function
-            loss = torch.nn.MSELoss()
+            if Const.loss == "aeroforce":
+                loss = mod.AeroForceLoss()
+            else:
+                loss = torch.nn.MSELoss()
             # Define optimizer
             optimizer = torch.optim.Adam(
                 model.parameters(), lr=Const.initial_lr, weight_decay=Const.reg_par

@@ -39,12 +39,14 @@ class MLP(nn.Module):
 
 
 class MlpDataset(Dataset):
-    def __init__(self, X, y, batch_size):
+    def __init__(self, dataset, in_idx):
         # convert into PyTorch tensors and remember them
-        self.X = torch.tensor(X)
-        self.Y = torch.tensor(y)
-        self.batch_size = batch_size
-        self.num_batches = (len(self.X) + batch_size - 1) // batch_size
+        self.X = torch.tensor(dataset[:, in_idx])
+        self.Y = torch.tensor(dataset[:, Const.flow_idx])
+        self.normals = torch.tensor(dataset[:, Const.face_normal_idx])
+        self.areas = torch.tensor(dataset[:, Const.area_idx])
+        self.batch_size = Const.batch_size * Const.sim_len
+        self.num_batches = (len(self.X) + self.batch_size - 1) // self.batch_size
 
     def __len__(self):
         # this should return the size of the dataset
@@ -54,7 +56,12 @@ class MlpDataset(Dataset):
         # this should return one sample from the dataset
         start = idx * self.batch_size
         end = min(start + self.batch_size, len(self.X))
-        return self.X[start:end], self.Y[start:end]
+        return (
+            self.X[start:end],
+            self.Y[start:end],
+            self.normals[start:end],
+            self.areas[start:end],
+        )
 
 
 def initialize_weights_xavier_normal(model):
@@ -73,3 +80,35 @@ def load_wandb_model(model, optimizer):
     # Load optimizer and set state
     optimizer.load_state_dict(checkpoint["optimizer_state"])
     return model, optimizer
+
+
+class AeroForceLoss(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.mse = torch.nn.MSELoss()
+
+    def forward(self, prediction, target, normals, areas):
+        # Basic MSE loss
+        base_loss = self.mse(prediction, target)
+
+        # Custom loss
+        force_loss = 0
+        for i in range(Const.batch_size):
+            start_idx, end_idx = i * Const.sim_len, (i + 1) * Const.sim_len
+            d_fa_press = torch.sum(
+                (prediction[start_idx:end_idx, 0] - target[start_idx:end_idx, 0])
+                * normals[start_idx:end_idx, :]
+                * areas[start_idx:end_idx],
+                dim=0,
+            )
+            d_fa_shear = torch.sum(
+                (prediction[start_idx:end_idx, 1:4] - target[start_idx:end_idx, 1:4])
+                * normals[start_idx:end_idx, :]
+                * areas[start_idx:end_idx],
+                dim=0,
+            )
+            force_loss += torch.norm(d_fa_press + d_fa_shear, p=2)
+        force_loss /= Const.batch_size
+
+        # Total loss
+        return base_loss + Const.force_loss_weight * force_loss

@@ -24,12 +24,15 @@ class Const:
         # training parameters
         self.mode = "mlp"
         self.scale_mode = "standard"
+        self.loss = None
+        self.force_loss_weight = 1.0
         self.restart = False
         self.trial_name = None
         self.rnd_seed = None
         self.val_set = 15
         self.test_set = 0
         self.batch_size = 1000
+        self.sim_len = None
         self.epochs = 1000
         self.lr_scheduler = None
         self.initial_lr = 1e-3

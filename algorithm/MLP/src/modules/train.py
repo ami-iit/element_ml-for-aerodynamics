@@ -36,45 +36,52 @@ def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
     print("\nStarting the training \n")
     while not stop_train:
         time_start = time.time()
-        model.train()
 
+        # Train step
+        model.train()
         train_loss_avg.append(0)
         min_loss_avg.append(0)
         num_batches_train = 0
-        for features_batch, target_batch in train_dataloader:
-
+        for features_batch, target_batch, normals, areas in train_dataloader:
             features_batch = features_batch.to(device)
             target_batch = target_batch.to(device)
-
+            normals = normals.to(device)
+            areas = areas.to(device)
             # Compute forward pass
             pred = model(features_batch)
-
             # Compute loss
-            train_loss = loss(pred, target_batch)
-
+            if Const.loss == "aeroforce":
+                train_loss = loss(pred, target_batch, normals, areas)
+            else:
+                train_loss = loss(pred, target_batch)
             # Backward step
             optimizer.zero_grad()
             train_loss.backward()
             optimizer.step()
-
             # Update loss
             train_loss_avg[-1] += train_loss.item()
             num_batches_train += 1
+        train_loss_avg[-1] /= num_batches_train
 
+        # Validation step
         model.eval()
         val_loss_avg.append(0)
         num_batches_val = 0
-        for features_batch, target_batch in val_dataloader:
+        for features_batch, target_batch, normals, areas in val_dataloader:
             features_batch = features_batch.to(device)
             target_batch = target_batch.to(device)
+            normals = normals.to(device)
+            areas = areas.to(device)
             pred = model(features_batch)
-            val_loss = loss(pred, target_batch)
+            if Const.loss == "aeroforce":
+                val_loss = loss(pred, target_batch, normals, areas)
+            else:
+                val_loss = loss(pred, target_batch)
             val_loss_avg[-1] += val_loss.item()
             num_batches_val += 1
-
-        train_loss_avg[-1] /= num_batches_train
         val_loss_avg[-1] /= num_batches_val
 
+        # Update best model if minimum validation loss
         if val_loss_avg[-1] < min_val_loss:
             best_model = model
             best_epoch = epoch
