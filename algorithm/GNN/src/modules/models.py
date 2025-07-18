@@ -4,9 +4,11 @@ Date: 2025-01-31
 Description: Module for the learning architectures
 """
 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch_geometric.nn as gnn
+import wandb
 
 from modules.constants import Const
 
@@ -133,3 +135,15 @@ def initialize_weights_xavier_normal(model):
         elif isinstance(layer, (gnn.GCNConv)):
             nn.init.xavier_uniform_(layer.lin.weight, gain=1.0)
             nn.init.zeros_(layer.lin.bias) if layer.lin.bias is not None else None
+
+
+def load_wandb_model(model, optimizer):
+    # Get model checkpoint from wandb
+    api = wandb.Api()
+    model_artifact = api.artifact(Const.project + "/model:" + Const.trial_name)
+    checkpoint = torch.jit.load(model_artifact.download() + r"/ckp_model.pt")
+    # Load model and set weights
+    model.load_state_dict(checkpoint["model_state"])
+    # Load optimizer and set state
+    optimizer.load_state_dict(checkpoint["optimizer_state"])
+    return model, optimizer

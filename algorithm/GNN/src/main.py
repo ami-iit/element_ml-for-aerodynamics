@@ -82,32 +82,37 @@ def main():
     train_dl = DataLoader(data_train, batch_size=Const.batch_size, shuffle=False)
     val_dl = DataLoader(data_val, batch_size=Const.batch_size, shuffle=False)
 
+    # Compute dataset sizes
+    train_len = np.sum([g.x.shape[0] for g in data_train])
+    print(f"Train set size: [{train_len},{Const.in_dim}]")
+    val_len = np.sum([g.x.shape[0] for g in data_val])
+    print(f"Validation set size: [{val_len},{Const.in_dim}]")
+    if data_test:
+        test_len = np.sum([g.x.shape[0] for g in data_test])
+        print(f"Test set size: [{test_len},{Const.in_dim}]")
+
     if Const.mode == "gnn" or Const.mode == "gae":
-        # Define the input and output dimensions
+        # Define Graph Neural Network model
         Const.in_dim = len(in_idxs) if Const.in_dim is None else Const.in_dim
         Const.out_dim = len(Const.flow_idx) if Const.out_dim is None else Const.out_dim
-
-        # Compute dataset sizes
-        train_len = np.sum([g.x.shape[0] for g in data_train])
-        print(f"Train set size: [{train_len},{Const.in_dim}]")
-        val_len = np.sum([g.x.shape[0] for g in data_val])
-        print(f"Validation set size: [{val_len},{Const.in_dim}]")
-        if data_test:
-            test_len = np.sum([g.x.shape[0] for g in data_test])
-            print(f"Test set size: [{test_len},{Const.in_dim}]")
-
-        # Initialize the GNN model and weights
         if Const.mode == "gnn":
             model = mod.GNN()
         elif Const.mode == "gae":
             model = mod.GAE()
-        mod.initialize_weights_xavier_normal(model)
         # Define loss function
         loss = torch.nn.MSELoss()
         # Define optimizer
         optimizer = torch.optim.Adam(
             model.parameters(), lr=Const.initial_lr, weight_decay=Const.reg_par
         )
+
+        # Set model weights
+        if Const.restart:
+            model, optimizer = mod.load_wandb_model(model, optimizer)
+        else:
+            # Initialize the GNN model and weights
+            mod.initialize_weights_xavier_normal(model)
+
         # Print model summary
         print("Model summary")
         print(summary(model, data_train[0].x, data_train[0].edge_index))

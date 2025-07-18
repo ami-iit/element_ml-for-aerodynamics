@@ -24,6 +24,8 @@ class Const:
         # training parameters
         self.mode = "mlp"
         self.scale_mode = "standard"
+        self.restart = False
+        self.trial_name = None
         self.rnd_seed = None
         self.compile_model = False
         self.val_set = 15
