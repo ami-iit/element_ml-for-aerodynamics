@@ -15,6 +15,7 @@ from torch_geometric.loader import DataLoader
 from torch_geometric.nn import summary
 import wandb
 import optuna
+import copy
 from optuna.trial import TrialState
 
 from modules import preprocess as pre
@@ -96,9 +97,9 @@ def main():
         Const.in_dim = len(in_idxs) if Const.in_dim is None else Const.in_dim
         Const.out_dim = len(Const.flow_idx) if Const.out_dim is None else Const.out_dim
         if Const.mode == "gnn":
-            model = mod.GNN()
+            model = mod.GNN().to(device)
         elif Const.mode == "gae":
-            model = mod.GAE()
+            model = mod.GAE().to(device)
         # Define loss function
         loss = torch.nn.MSELoss()
         # Define optimizer
@@ -115,7 +116,8 @@ def main():
 
         # Print model summary
         print("Model summary")
-        print(summary(model, data_train[0].x, data_train[0].edge_index))
+        example = copy.deepcopy(data_train[0]).to(device)
+        print(summary(model, example.x, example.edge_index))
 
         # Count the number of trainable parameters
         train_param = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -125,11 +127,10 @@ def main():
                 "Warning: the number of trainable parameters is greater than the dataset size"
             )
 
-        # Compile and move model to device
+        # Compile model if requested
         if Const.compile_model:
             torch.set_float32_matmul_precision("high")
             model.compile(dynamic=True, fullgraph=True)
-        model.to(device)
 
         # Training
         history, model, best_model = train.train_GNN(
