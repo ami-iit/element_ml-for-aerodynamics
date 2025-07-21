@@ -141,7 +141,7 @@ def load_wandb_model(model, optimizer):
     # Get model checkpoint from wandb
     api = wandb.Api()
     model_artifact = api.artifact(Const.project + "/model:" + Const.trial_name)
-    checkpoint = torch.jit.load(model_artifact.download() + r"/ckp_model.pt")
+    checkpoint = torch.load(model_artifact.download() + r"/ckp_model.pt")
     # Load model and set weights
     model.load_state_dict(checkpoint["model_state"])
     # Load optimizer and set state
