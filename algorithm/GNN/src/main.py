@@ -92,12 +92,14 @@ def main():
         test_len = np.sum([g.x.shape[0] for g in data_test])
         print(f"Test set size: [{test_len},{Const.in_dim}]")
 
-    if Const.mode == "gnn" or Const.mode == "gae":
+    if Const.mode in ["gcn", "hgn", "gae"]:
         # Define Graph Neural Network model
         Const.in_dim = len(in_idxs) if Const.in_dim is None else Const.in_dim
         Const.out_dim = len(Const.flow_idx) if Const.out_dim is None else Const.out_dim
-        if Const.mode == "gnn":
-            model = mod.GNN().to(device)
+        if Const.mode == "gcn":
+            model = mod.GCN().to(device)
+        elif Const.mode == "hgn":
+            model = mod.HGN().to(device)
         elif Const.mode == "gae":
             model = mod.GAE().to(device)
         # Define loss function

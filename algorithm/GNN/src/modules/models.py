@@ -13,16 +13,49 @@ import wandb
 from modules.constants import Const
 
 
-class GNN(nn.Module):
+class GCN(nn.Module):
     """
-    Vanilla Graph Neural Network (GNN) model:
+    Graph Convolutional Network (GCN) model:
+    - GNN layers with GCNConv for graph convolution
+    """
+
+    def __init__(self):
+        super(GCN, self).__init__()
+        # GCN layers
+        self.conv_layers = nn.ModuleList(
+            [gnn.GCNConv(Const.in_dim, Const.latent_dim, normalize=False)]
+            + [
+                gnn.GCNConv(Const.latent_dim, Const.latent_dim, normalize=False)
+                for _ in range(Const.gnc_layers - 2)
+            ]
+            + [gnn.GCNConv(Const.latent_dim, Const.out_dim, normalize=False)]
+        )
+
+    def forward(self, x, edge_index):
+        # Input layer
+        out = self.conv_layers[0](x, edge_index)
+        out = F.relu(out)
+        out = F.dropout(out, p=Const.dropout, training=self.training)
+        # Hidden layers
+        for conv in self.conv_layers[1:-1]:
+            out = conv(out, edge_index)
+            out = F.relu(out)
+            out = F.dropout(out, p=Const.dropout, training=self.training)
+        # Output layer
+        output = self.conv_layers[-1](out, edge_index)
+        return output
+
+
+class HGN(nn.Module):
+    """
+    Hybrid Graph Network (HGN) model:
     input -> encoder -> GNC -> decoder -> output
     - MLP with homogeneus layer dimensions for encoder and decoder
     - GNN layers with GCNConv for graph convolution
     """
 
     def __init__(self):
-        super(GNN, self).__init__()
+        super(HGN, self).__init__()
         # Encoder layers
         self.encoder = nn.Sequential(
             nn.Linear(Const.in_dim, Const.enc_dim),  # Input layer
