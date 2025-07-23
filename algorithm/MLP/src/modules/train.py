@@ -75,6 +75,8 @@ def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
             pred = model(features_batch)
             if Const.loss == "aeroforce":
                 val_loss = loss(pred, target_batch, normals, areas)
+            elif Const.loss == "physics-informed":
+                val_loss = loss(pred, target_batch, features_batch)
             else:
                 val_loss = loss(pred, target_batch)
             val_loss_avg[-1] += val_loss.item()
