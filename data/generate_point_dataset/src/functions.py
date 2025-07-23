@@ -47,6 +47,52 @@ def rotate_geometry(raw_node_pos, raw_face_normals, pitch, yaw):
     return node_pos, face_normals
 
 
+def transform_points(frame_1_H_frame_2, points):
+    ones = np.ones((len(points), 1))
+    start_coord = np.hstack((points, ones))
+    end_coord = np.dot(frame_1_H_frame_2, start_coord.T).T
+    return end_coord[:, :3]
+
+
+def rotate_vectors(frame_1_H_frame_2, vectors):
+    frame_1_R_frame_2 = frame_1_H_frame_2[:3, :3]
+    rotated_vectors = np.dot(frame_1_R_frame_2, vectors.T).T
+    return rotated_vectors
+
+
+def visualize_pointcloud(points, values, window_name="Open3D"):
+    # Normalize the colormap
+    norm = Normalize(vmin=-2, vmax=1)
+    normalized_flow_variable = norm(values)
+    colormap = cm.jet
+    colors = colormap(normalized_flow_variable)[:, :3]
+    # Create a point cloud from the dataset
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(points)
+    pcd.colors = o3d.utility.Vector3dVector(colors)
+    # Create a coordinate frame
+    frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
+        size=0.2, origin=[0, 0, 0]
+    )
+    # Set visualization parameters
+    zoom = 0.75
+    x_cen = (points[:, 0].max() + points[:, 0].min()) / 2
+    y_cen = (points[:, 1].max() + points[:, 1].min()) / 2
+    z_cen = (points[:, 2].max() + points[:, 2].min()) / 2
+    center = [x_cen, y_cen, z_cen]
+    front = [1.0, 0.0, 1.0]
+    up = [0.0, 1.0, 0.0]
+    # Display the pointcloud
+    o3d.visualization.draw_geometries(
+        [frame, pcd],
+        zoom=zoom,
+        lookat=center,
+        front=front,
+        up=up,
+        window_name=window_name,
+    )
+
+
 def check_geometry(node_pos, pressure_coefficient):
     # Normalize the colormap
     norm = Normalize(vmin=-2, vmax=1)

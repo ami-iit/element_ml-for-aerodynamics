@@ -8,23 +8,46 @@ Description:    This code generates a dataset of the aerodynamic flow variables
 """
 
 import numpy as np
-import pandas as pd
 from pathlib import Path
+from resolve_robotics_uri_py import resolve_robotics_uri
 
 import src.functions as fn
+from src.robot import Robot
+from src.flow import FlowImporter
 
 WIND_INTENSITY = 17.0  # Fixed simulation wind intensity
 DYN_PRESSURE = 0.5 * 1.225 * WIND_INTENSITY**2  # Dynamic pressure at S/L 17 m/s
 
 
 def main():
+    # Initialize robot object
+    robot_name = "iRonCub-Mk3"
+    urdf_path = str(resolve_robotics_uri("package://iRonCub-Mk3/model.urdf"))
+    robot = Robot(robot_name, urdf_path)
+
     # Create a dataset output directory
     dataset_dir = Path(__file__).parents[0] / "dataset"
     dataset_dir.mkdir(parents=True, exist_ok=True)
 
-    # Get the path to the simulation data
+    # Get the path to the mesh and data
+    mesh_dir = input("Enter the path to the fluent msh directory: ")
+    mesh_path = Path(str(mesh_dir).strip())
     data_dir = input("Enter the path to the fluent dtbs directory: ")
     data_path = Path(str(data_dir).strip())
+
+    # Get hovering joint configuration
+    joint_config_file = list(data_path.parent.rglob("joint-configurations.csv"))[0]
+    joint_configs = np.genfromtxt(joint_config_file, delimiter=",", dtype=str)
+    joint_pos = joint_configs[joint_configs[:, 0] == "hovering"][0, 1:].astype(float)
+
+    # Import mesh data
+    flow = FlowImporter()
+    robot.set_state(0, 0, joint_pos * np.pi / 180.0)
+    link_H_world_dict = robot.compute_all_link_H_world()
+    flow.import_target_mesh(mesh_path, robot.surface_list, link_H_world_dict)
+
+    # Visualize target mesh
+    # fn.visualize_pointcloud(flow.w_nodes, flow.w_nodes[:, 0])
 
     # Get configuration names and joint configurations
     files = [file.name for file in data_path.rglob("*.dtbs") if file.is_file()]
@@ -37,7 +60,23 @@ def main():
     for config in configs:
         joint_pos = joint_configs[joint_configs[:, 0] == config][0, 1:].astype(float)
         pitch_yaw_angles = fn.find_pitch_yaw_angles(config, files)
-        config_data = {"data": [], "pitch_angles": [], "yaw_angles": []}
+        config_data = {
+            "data": [],
+            "pitch_angles": [],
+            "yaw_angles": [],
+            "part_start_ids": flow.part_start_ids,
+            "part_end_ids": flow.part_end_ids,
+        }
+
+        # Set robot state and get link_H_world
+        robot.set_state(0, 0, joint_pos * np.pi / 180.0)
+        link_H_world_dict = robot.compute_all_link_H_world()
+
+        # Import source mesh
+        flow.import_source_mesh(mesh_path, config, link_H_world_dict)
+
+        # Visualize source mesh
+        # fn.visualize_pointcloud(flow.w_nodes_src, flow.w_nodes_src[:, 0])
 
         # Start the cycle on simulations
         sim_num = len(pitch_yaw_angles)
@@ -45,35 +84,33 @@ def main():
             pitch = int(pitch_yaw_angle[0])
             yaw = int(pitch_yaw_angle[1])
 
-            # Compute relative wind velocity vector
+            # Set robot state and get link_H_world and base_H_world
+            robot.set_state(pitch, yaw, joint_pos * np.pi / 180.0)
+            link_H_world_dict = robot.compute_all_link_H_world()
+            base_H_world = robot.compute_link_H_world(robot.base_link)
+
+            # Import and transform simulation data
+            flow.import_fluent_simulation_data(
+                data_path, config, pitch, yaw, link_H_world_dict
+            )
+            world_H_link_dict = robot.compute_all_world_H_link()
+            flow.interpolate_fluent_simulation_data(world_H_link_dict)
+            flow.transform_data_to_base_link(base_H_world, DYN_PRESSURE)
+
             wind_velocity = fn.compute_wind_velocity(pitch, yaw, WIND_INTENSITY)
-
-            # Read simulation file
-            sim_file = list(data_path.rglob(f"{config}-{pitch}-{yaw}-robot.dtbs"))[0]
-            raw_data = pd.read_csv(sim_file, sep="\s+", skiprows=1, header=None)
-
-            # Import data
-            node_pos = raw_data.values[:, 1:4]
-            face_normals = raw_data.values[:, 9:12]
-            press_coeff = raw_data.values[:, 4] / DYN_PRESSURE
-            fric_coeff = raw_data.values[:, 5:8] / DYN_PRESSURE
-
-            # Transform data
-            face_areas = np.linalg.norm(face_normals, axis=1, keepdims=True)
-            face_normals = face_normals / face_areas
-            wind_velocities = np.tile(wind_velocity, (node_pos.shape[0], 1))
-            joint_pos_mat = np.tile(joint_pos, (node_pos.shape[0], 1))
+            wind_velocities = np.tile(wind_velocity, (flow.b_nodes.shape[0], 1))
+            joint_pos_mat = np.tile(joint_pos, (flow.b_nodes.shape[0], 1))
 
             # Assemble single simulation data
             sim_data = np.hstack(
                 (
                     wind_velocities,
                     joint_pos_mat,
-                    node_pos,
-                    face_normals,
-                    press_coeff.reshape(-1, 1),
-                    fric_coeff,
-                    face_areas.reshape(-1, 1),
+                    flow.b_nodes,
+                    flow.b_face_normals,
+                    flow.press_coeff.reshape(-1, 1),
+                    flow.b_fric_coeff,
+                    flow.areas.reshape(-1, 1),
                 )
             )
 
@@ -81,6 +118,9 @@ def main():
             config_data["data"].append(sim_data.astype(np.float32))
             config_data["pitch_angles"].append(pitch)
             config_data["yaw_angles"].append(yaw)
+
+            # Visualize point cloud for debugging purposes
+            # fn.visualize_pointcloud(flow.b_nodes, flow.press_coeff)
 
             # Print progress
             print(
