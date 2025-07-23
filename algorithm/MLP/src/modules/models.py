@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset
+from torch.autograd import grad
 import wandb
 
 from modules.constants import Const
@@ -112,3 +113,61 @@ class AeroForceLoss(torch.nn.Module):
 
         # Total loss
         return base_loss + Const.force_loss_weight * force_loss
+
+
+class PhysicsInformedLoss(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.mse = torch.nn.MSELoss()
+
+    def forward(self, output, target, input):
+        """
+        output: model output (p, tau_11, tau_12, tau_13, tau_22, tau_23, tau_33)
+        target: ground truth values (p, tau_w,x, tau_w,y, tau_w,z)
+        input: model input (v_x, v_y, v_z, x, y, z, n_x, n_y, n_z)
+        """
+        p, tau11, tau12, tau13, tau22, tau23, tau33 = [output[:, i] for i in range(7)]
+        n_x, n_y, n_z = input[:, 6], input[:, 7], input[:, 8]
+
+        # 1. Wall stress loss (data loss)
+        tau_w = torch.stack(
+            [
+                p,
+                tau11 * n_x + tau12 * n_y + tau13 * n_z,
+                tau12 * n_x + tau22 * n_y + tau23 * n_z,
+                tau13 * n_x + tau23 * n_y + tau33 * n_z,
+            ],
+            dim=1,
+        )
+        data_loss = self.mse(tau_w, target)
+
+        # 2. Physics-informed loss: momentum balance
+        input = input.requires_grad_(True)
+        grad_out = torch.ones_like(p)
+
+        # Compute gradients
+        def dfdx(f, dim):
+            return grad(f, input, grad_outputs=grad_out, create_graph=True)[0][:, dim]
+
+        dp_dx = dfdx(p, 3)
+        dp_dy = dfdx(p, 4)
+        dp_dz = dfdx(p, 5)
+        dt11_dx = dfdx(tau11, 3)
+        dt12_dy = dfdx(tau12, 4)
+        dt13_dz = dfdx(tau13, 5)
+        dt12_dx = dfdx(tau12, 3)
+        dt22_dy = dfdx(tau22, 4)
+        dt23_dz = dfdx(tau23, 5)
+        dt13_dx = dfdx(tau13, 3)
+        dt23_dy = dfdx(tau23, 4)
+        dt33_dz = dfdx(tau33, 5)
+
+        # Residuals of momentum equations
+        mom_x = dp_dx - (dt11_dx + dt12_dy + dt13_dz)
+        mom_y = dp_dy - (dt12_dx + dt22_dy + dt23_dz)
+        mom_z = dp_dz - (dt13_dx + dt23_dy + dt33_dz)
+
+        physics_loss = (mom_x**2 + mom_y**2 + mom_z**2).mean()
+
+        # Total loss
+        return data_loss + Const.physics_informed_loss_weight * physics_loss

@@ -107,6 +107,8 @@ def main():
         # Define loss function
         if Const.loss == "aeroforce":
             loss = mod.AeroForceLoss()
+        elif Const.loss == "physics-informed":
+            loss = mod.PhysicsInformedLoss()
         else:
             loss = torch.nn.MSELoss()
         # Define optimizer

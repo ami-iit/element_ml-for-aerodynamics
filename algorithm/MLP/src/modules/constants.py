@@ -26,6 +26,7 @@ class Const:
         self.scale_mode = "standard"
         self.loss = None
         self.force_loss_weight = 1.0
+        self.physics_informed_loss_weight = 1.0
         self.restart = False
         self.trial_name = None
         self.rnd_seed = None
