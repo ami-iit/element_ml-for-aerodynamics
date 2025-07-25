@@ -1,43 +1,28 @@
 name: ml-env
 channels:
   - conda-forge
-  - robotology
 dependencies:
-  - python==3.11.0
+  - python
   - pathlib
   - toml
-  - numpy==1.26.4
-  - scipy
-  - idyntree
   - resolve-robotics-uri-py
+  - numpy
+  - scipy
   - matplotlib
-  - nvidia/label/cuda-12.4.0::cuda
-  - nomkl
+  - idyntree
   - tabulate
-  - openpyxl
-  - huggingface_hub
   - optuna
   - rich
-  - pyvista
-  - scikit-learn
   - pandas
-  - libblas=*=*netlib
-  - pip
-  - pip:
-    - --extra-index-url https://download.pytorch.org/whl/cu124
-    - torch==2.5.0
-    - torchvision==0.20.0
-    - torchaudio==2.5.0
-    - torchsummary
-    - torchinfo
-    - open3d
-    - optuna
-    - wandb
-    - onnx
-    - onnxruntime
-    - plotly==5.24.0
-    - pytorch-msssim
-    - --extra-index-url https://data.pyg.org/whl/torch-2.5.0+cu124.html
-    - torch_geometric
+  - scikit-learn
+  - nvidia/label/cuda-12.8.0::cuda
+  - libtorch==2.7.1
+  - pytorch-gpu==2.7.1
+  - pytorch=2.7.1
+  - pytorch-model-summary
+  - wandb
+  - huggingface_hub
+  - open3d
+  - pytorch_geometric
 variables:
   CUBLAS_WORKSPACE_CONFIG: :4096:8
