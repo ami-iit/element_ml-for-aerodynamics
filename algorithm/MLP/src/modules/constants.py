@@ -24,8 +24,9 @@ class Const:
         # training parameters
         self.mode = "mlp"
         self.scale_mode = "standard"
-        self.loss = None
+        self.force_loss = False
         self.force_loss_weight = 1.0
+        self.physics_informed_loss = False
         self.physics_informed_loss_weight = 1.0
         self.restart = False
         self.trial_name = None

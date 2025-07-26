@@ -86,33 +86,31 @@ def load_wandb_model(model, optimizer):
 class AeroForceLoss(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        self.mse = torch.nn.MSELoss()
 
-    def forward(self, prediction, target, normals, areas):
-        # Basic MSE loss
-        base_loss = self.mse(prediction, target)
-
-        # Custom loss
-        force_loss = 0
-        for i in range(Const.batch_size):
-            start_idx, end_idx = i * Const.sim_len, (i + 1) * Const.sim_len
+    def forward(self, pred, target, normals, areas):
+        force_loss, i, end_idx = 0, 0, 0
+        while end_idx < target.shape[1] - 1:
+            # for i in range(Const.batch_size):
+            start_idx, end_idx = i * Const.sim_len, (i + 1) * Const.sim_len - 1
             d_fa_press = torch.sum(
-                (prediction[start_idx:end_idx, 0] - target[start_idx:end_idx, 0])
-                * normals[start_idx:end_idx, :]
-                * areas[start_idx:end_idx],
+                (pred[0, start_idx:end_idx, 0] - target[0, start_idx:end_idx, 0])[
+                    :, None
+                ]
+                * normals[0, start_idx:end_idx, :]
+                * areas[0, start_idx:end_idx, :],
                 dim=0,
             )
             d_fa_shear = torch.sum(
-                (prediction[start_idx:end_idx, 1:4] - target[start_idx:end_idx, 1:4])
-                * normals[start_idx:end_idx, :]
-                * areas[start_idx:end_idx],
+                (pred[0, start_idx:end_idx, 1:] - target[0, start_idx:end_idx, 1:])
+                * areas[0, start_idx:end_idx, :],
                 dim=0,
             )
             force_loss += torch.norm(d_fa_press + d_fa_shear, p=2)
+            i += 1
         force_loss /= Const.batch_size
 
         # Total loss
-        return base_loss + Const.force_loss_weight * force_loss
+        return force_loss
 
 
 class PhysicsInformedLoss(torch.nn.Module):

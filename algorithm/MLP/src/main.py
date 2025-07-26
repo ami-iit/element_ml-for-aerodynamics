@@ -9,13 +9,10 @@ Description:    Main module to execute the training of the Multi-Layer
 import numpy as np
 import sys
 import torch
-import torch.nn as nn
-import torch.onnx
-import torch.jit
 from torch.utils.data import DataLoader
 import random as random
 import time as time
-import torchsummary
+from pytorch_model_summary import summary
 import optuna
 from optuna.trial import TrialState
 import wandb
@@ -65,9 +62,6 @@ def main():
     data_train_list, data_val_list, data_test_list, indices = pre.split_dataset(
         dataset, Const.val_set, Const.test_set
     )
-    # train_idx = indices[: len(data_train_list)]
-    # val_idx = indices[len(data_train_list) : len(data_train_list) + len(data_val_list)]
-    # test_idx = indices[len(data_train_list) + len(data_val_list) :]
 
     # Concatenate sample points
     data_train = np.concatenate(data_train_list, axis=0)
@@ -104,27 +98,19 @@ def main():
         Const.in_dim = len(in_idxs) if Const.in_dim is None else Const.in_dim
         Const.out_dim = len(Const.flow_idx) if Const.out_dim is None else Const.out_dim
         model = mod.MLP().to(device)
-        # Define loss function
-        if Const.loss == "aeroforce":
-            loss = mod.AeroForceLoss()
-        elif Const.loss == "physics-informed":
-            loss = mod.PhysicsInformedLoss()
-        else:
-            loss = torch.nn.MSELoss()
         # Define optimizer
         optimizer = torch.optim.Adam(
             model.parameters(), lr=Const.initial_lr, weight_decay=Const.reg_par
         )
-
+        # Initialize model weights
         if Const.restart:
             model, optimizer = mod.load_wandb_model(model, optimizer)
         else:
-            # Initialize weights
             mod.initialize_weights_xavier_normal(model)
 
         # Print model summary
         print("Model summary")
-        torchsummary.summary(model.to(device), (Const.in_dim,))
+        print(summary(model, torch.zeros((Const.in_dim,)).to(device), batch_size=-1))
 
         # Move model to device
         model.to(device)
@@ -142,7 +128,6 @@ def main():
             train_dl,
             val_dl,
             model,
-            loss,
             optimizer,
             device,
         )
@@ -154,12 +139,7 @@ def main():
         # Save the scaling values
         out.save_scaling(scaling)
         # save the trained and best encoder
-        out.save_model(
-            model,
-            optimizer,
-            torch.ones((1, Const.in_dim)),
-            best_model,
-        )
+        out.save_model(model, optimizer, best_model)
         # save the history file
         out.write_hystory(history)
         # Save the indices of the the sub-sets into an xlsx file
@@ -183,20 +163,15 @@ def main():
             Const.hid_dim = int(2**hid_dim_pow)
             # Define the MLP model
             model = mod.MLP().to(device)
-            # Initialize weights
-            mod.initialize_weights_xavier_normal(model)
-            # Define loss function
-            if Const.loss == "aeroforce":
-                loss = mod.AeroForceLoss()
-            else:
-                loss = torch.nn.MSELoss()
             # Define optimizer
             optimizer = torch.optim.Adam(
                 model.parameters(), lr=Const.initial_lr, weight_decay=Const.reg_par
             )
+            # Initialize weights
+            mod.initialize_weights_xavier_normal(model)
             # Print model summary
             print("Model summary")
-            torchsummary.summary(model.to(device), (Const.in_dim,))
+            summary(model.to(device), (Const.in_dim,))
             # Move model to device
             model.to(device)
             # Count the number of trainable parameters
@@ -211,7 +186,6 @@ def main():
                 train_dl,
                 val_dl,
                 model,
-                loss,
                 optimizer,
                 device,
             )

@@ -45,7 +45,7 @@ def save_scaling(scaling_params):
         wandb.log_artifact(scale_artifact, aliases=["latest", Const.run_name])
 
 
-def save_model(model, optimizer, example, best_model=None):
+def save_model(model, optimizer, best_model=None):
     print("Saving checkpoint model as ckp_model.pt")
     checkpoint = {
         "epoch": Const.epochs,
@@ -57,6 +57,7 @@ def save_model(model, optimizer, example, best_model=None):
     checkpoint_path = Const.out_dir + "/ckp_model.pt"
     torch.save(checkpoint, checkpoint_path)
     # save model for inference
+    example = torch.ones((1, Const.in_dim))
     scripted_model = torch.jit.trace(model.eval().to("cpu"), example)
     scripted_model.save(Const.out_dir + "/scripted_model.pt")
     torch.onnx.export(

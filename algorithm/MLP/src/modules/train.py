@@ -5,13 +5,15 @@ Description:    Module for training the learning algorithm.
 """
 
 import time
+import torch
 import wandb
 import torch.optim as optim
 
 from modules.constants import Const
+import modules.models as mod
 
 
-def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
+def train_MLP(train_dataloader, val_dataloader, model, optimizer, device):
     outputs = []
     train_loss_avg = []
     min_loss_avg = []
@@ -24,6 +26,7 @@ def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
     start_time = time.time()
     min_val_loss = 1e6
 
+    # Initialize scheduler (if specified)
     if Const.lr_scheduler == "linear":
         scheduler = optim.lr_scheduler.LinearLR(
             optimizer, start_factor=1.0, end_factor=1e-3, total_iters=Const.lr_iters
@@ -32,6 +35,13 @@ def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode="min", factor=0.5, patience=Const.lr_patience
         )
+
+    # Initialize loss functions
+    mse_loss = torch.nn.MSELoss()
+    if Const.force_loss:
+        force_loss = mod.AeroForceLoss()
+    # if Const.physics_informed_loss: TODO: Different setting (MSE on <tau,n>)
+    #     physics_informed_loss = mod.PhysicsInformedLoss()
 
     print("\nStarting the training \n")
     while not stop_train:
@@ -50,10 +60,14 @@ def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
             # Compute forward pass
             pred = model(features_batch)
             # Compute loss
-            if Const.loss == "aeroforce":
-                train_loss = loss(pred, target_batch, normals, areas)
+            if Const.force_loss:
+                train_loss = mse_loss(
+                    pred, target_batch
+                ) + Const.force_loss_weight * force_loss(
+                    pred, target_batch, normals, areas
+                )
             else:
-                train_loss = loss(pred, target_batch)
+                train_loss = mse_loss(pred, target_batch)
             # Backward step
             optimizer.zero_grad()
             train_loss.backward()
@@ -73,12 +87,14 @@ def train_MLP(train_dataloader, val_dataloader, model, loss, optimizer, device):
             normals = normals.to(device)
             areas = areas.to(device)
             pred = model(features_batch)
-            if Const.loss == "aeroforce":
-                val_loss = loss(pred, target_batch, normals, areas)
-            elif Const.loss == "physics-informed":
-                val_loss = loss(pred, target_batch, features_batch)
+            if Const.force_loss:
+                val_loss = mse_loss(
+                    pred, target_batch
+                ) + Const.force_loss_weight * force_loss(
+                    pred, target_batch, normals, areas
+                )
             else:
-                val_loss = loss(pred, target_batch)
+                val_loss = mse_loss(pred, target_batch)
             val_loss_avg[-1] += val_loss.item()
             num_batches_val += 1
         val_loss_avg[-1] /= num_batches_val
