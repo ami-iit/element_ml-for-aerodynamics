@@ -14,15 +14,18 @@ dependencies:
   - optuna
   - rich
   - pandas
+  - openpyxl
+  - open3d
+  - wandb
+  - huggingface_hub
   - scikit-learn
   - nvidia/label/cuda-12.8.0::cuda
   - libtorch==2.7.1
   - pytorch-gpu==2.7.1
   - pytorch=2.7.1
   - pytorch-model-summary
-  - wandb
-  - huggingface_hub
-  - open3d
   - pytorch_geometric
+  - onnx
+  - onnxruntime
 variables:
   CUBLAS_WORKSPACE_CONFIG: :4096:8
