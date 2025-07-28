@@ -33,7 +33,7 @@ class Const:
         self.rnd_seed = None
         self.val_set = 15
         self.test_set = 0
-        self.batch_size = 1000
+        self.batch_size = 6
         self.sim_len = None
         self.epochs = 1000
         self.lr_scheduler = None
