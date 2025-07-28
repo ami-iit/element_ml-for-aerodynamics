@@ -10,8 +10,9 @@ from modules.constants import Const
 
 
 class Run:
-    def __init__(self):
+    def __init__(self, robot):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.robot = robot
 
     def load_train_from_wandb(self, project_path: str, run_name: str):
         print(f"Loading model from: {project_path}/{run_name}")
@@ -34,7 +35,7 @@ class Run:
         scale_artifact = api.artifact(project_path + "/scaling-parameters:" + run_name)
         scaling_dict = np.load(
             scale_artifact.download() + "/scaling.npy", allow_pickle=True
-        ).all()
+        ).item()
         self.scaling = [scaling_dict[idx] for idx in scaling_dict.keys()]
 
         # Get dataset indices
@@ -147,19 +148,31 @@ class Run:
             pressure = press_coeff.reshape(-1, 1) * dyn_press
             friction = fric_coeff * dyn_press
             d_force = pressure * face_normals * areas + friction * areas
-            pred_aero_force = np.sum(d_force, axis=0)
+            pred_body_force = np.sum(d_force, axis=0)
             # Compute dataset aerodynamic force
             pressure = sim[:, Const.flow_idx[0]].reshape(-1, 1) * dyn_press
             friction = sim[:, Const.flow_idx[1:]] * dyn_press
             d_force = pressure * face_normals * areas + friction * areas
-            dataset_aero_force = np.sum(d_force, axis=0)
+            dataset_body_force = np.sum(d_force, axis=0)
+            # rotate forces to aerodynamic frame
+            pitch_angle = self.pitch_angles[i]
+            yaw_angle = self.yaw_angles[i]
+            self.robot.set_state(pitch_angle, yaw_angle, np.zeros(self.robot.nDOF))
+            world_H_base = self.robot.compute_world_H_link("root_link")
+            pred_aero_force = np.dot(world_H_base[:3, :3], pred_body_force)
+            dataset_aero_force = np.dot(world_H_base[:3, :3], dataset_body_force)
             # Save data
             self.aero_forces_in[i, :] = dataset_aero_force
             self.aero_forces_out[i, :] = pred_aero_force
             self.aero_force_errors[i, :] = np.abs(dataset_aero_force - pred_aero_force)
+            self.aero_force_norm_err = np.abs(
+                np.linalg.norm(dataset_aero_force) - np.linalg.norm(pred_aero_force)
+            ) / np.linalg.norm(dataset_aero_force)
         # Compute Mean Squared Error
         aero_force_rmse = np.sqrt(np.mean(self.aero_force_errors**2, axis=0))
+        aero_force_norm_rmse = np.sqrt(np.mean(self.aero_force_norm_err**2)) * 100
         # Display MSE
         print(f"RMSE Drag Force: {aero_force_rmse[2]}")
         print(f"RMSE Lift Force: {aero_force_rmse[1]}")
         print(f"RMSE Side Force: {aero_force_rmse[0]}")
+        print(f"%RMSE Norm Force: {aero_force_norm_rmse}")
