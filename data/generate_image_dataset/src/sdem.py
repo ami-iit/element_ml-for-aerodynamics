@@ -706,13 +706,7 @@ def plot_mesh(v, f, arg3=None):
         mesh.vertex_colors = o3d.utility.Vector3dVector(colors)
 
     # Show the mesh
-    # o3d.visualization.draw_geometries([mesh])
-    geometries = [
-        {"geometry": mesh, "name": "mesh"},
-        {"geometry": line_set, "name": "lines"},
-        {"geometry": point_cloud, "name": "points"},
-    ]
-    o3d.visualization.draw(geometries, show_skybox=False)
+    o3d.visualization.draw_geometries([mesh, line_set, point_cloud])
 
 
 def regular_triangle(f, v):

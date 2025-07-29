@@ -35,7 +35,7 @@ def main():
             nodes, faces = ans.read_fluent_mesh_file(str(meshfile))
             # Read dual mesh data
             if MESH == "dual":
-                filename = f"mesh-{config}-0-0-{surface}.dtbs"
+                filename = f"{config}-{surface}.dlm"
                 datafile = list(data_path.rglob(filename))[0]
                 celldata = pd.read_csv(datafile, sep="\s+", skiprows=1, header=None)
                 cells = celldata.values[:, 1:4]
