@@ -10,7 +10,8 @@ from pathlib import Path
 from src.wing_flow import FlowGenerator, FlowVisualizer
 
 IM_RES = (64, 64)
-DENSITY_EXP = 4
+DENSITY_EXP = 1
+DEVICE = "cpu"
 
 
 def main():
@@ -26,14 +27,15 @@ def main():
     aoas = dataset["angles_of_attack"]
     images = dataset["database"]
     # Import the trained models
-    model_path = root / "training" / f"{DENSITY_EXP}"
+    model_path = root / "training" / f"{DENSITY_EXP}_v2"
     flow.load_models(
         encoder_path=str(model_path / "scripted_enc.pt"),
         decoder_path=str(model_path / "scripted_dec.pt"),
+        device=DEVICE,
     )
 
     # Generate the latent space from the encoder
-    in_image = torch.tensor(images).to("cpu")
+    in_image = torch.tensor(images).to(DEVICE)
     latent_space = flow.encoder(in_image).cpu().detach().numpy()
 
     # Plots

@@ -191,9 +191,9 @@ class FlowGenerator:
         return
 
     # Load the trained models
-    def load_models(self, encoder_path, decoder_path):
-        self.encoder = torch.jit.load(encoder_path).to("cpu")
-        self.decoder = torch.jit.load(decoder_path).to("cpu")
+    def load_models(self, encoder_path, decoder_path, device):
+        self.encoder = torch.jit.load(encoder_path).to(device)
+        self.decoder = torch.jit.load(decoder_path).to(device)
         self.encoder.eval()
         self.decoder.eval()
         return
@@ -314,6 +314,40 @@ class FlowVisualizer:
         # Display the pointcloud
         o3d.visualization.draw_geometries(
             [pcd], zoom=zoom, lookat=center, front=front, up=up, window_name=window_name
+        )
+        return
+
+    def plot_wing_geometry(self, window_name="Open3D"):
+        mesh = ms.create_mesh_from_faces_split(self.points, self.faces)
+        # Convert mesh to line set (to visualize edges)
+        lines = np.asarray(mesh.triangles)[:, [[0, 1], [1, 2], [2, 0]]].reshape(-1, 2)
+        line_set = o3d.geometry.LineSet()
+        line_set.points = mesh.vertices
+        line_set.lines = o3d.utility.Vector2iVector(lines)
+        # Create point cloud for vertices
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = mesh.vertices
+        pcd.paint_uniform_color([0, 0, 1])  # Blue points
+        # Create reference frame
+        mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
+            size=0.2, origin=[0, 0, 0]
+        )
+        # Set visualization parameters
+        zoom = 0.5
+        x_cen = (self.points[:, 0].max() + self.points[:, 0].min()) / 2
+        y_cen = (self.points[:, 1].max() + self.points[:, 1].min()) / 2
+        z_cen = (self.points[:, 2].max() + self.points[:, 2].min()) / 2
+        center = [x_cen, y_cen, z_cen]
+        front = [-1.0, -1.0, 1.0]
+        up = [0.0, 0.0, 1.0]
+        # Display everything
+        o3d.visualization.draw_geometries(
+            [mesh, line_set, pcd, mesh_frame],
+            zoom=zoom,
+            lookat=center,
+            front=front,
+            up=up,
+            window_name=window_name,
         )
         return
 
@@ -466,3 +500,37 @@ class FlowVisualizer:
             axes[i].set_ylabel(input_names[0])
             plt.tight_layout()
         plt.show()
+
+    def create_mesh_from_faces_split(self, points, faces):
+        """Creates a mesh using given points and face connectivity, without control nodes."""
+        # Convert all faces into triangles
+        triangular_faces = []
+        for face in faces:
+            if len(face) >= 3:
+                triangles = self.triangulate_face_no_ctrl_node(face)
+                triangular_faces.extend(triangles)
+        is_used = np.zeros(len(points), dtype=bool)
+        for face in triangular_faces:
+            for node in face:
+                is_used[node] = True
+        if not np.all(is_used):
+            print("Unused nodes:", np.where(~is_used)[0])
+        # Create Open3D TriangleMesh
+        mesh = o3d.geometry.TriangleMesh()
+        mesh.vertices = o3d.utility.Vector3dVector(points)
+        mesh.triangles = o3d.utility.Vector3iVector(triangular_faces)
+        # Compute normals for better visualization
+        mesh.compute_vertex_normals()
+        return mesh
+
+    def triangulate_face_no_ctrl_node(self, face):
+        """Triangulates a face without creating a support node."""
+        if len(face) < 3:
+            raise ValueError("Only faces with 3 or more vertices are supported.")
+        triangles = []
+        if len(face) == 3:
+            triangles.append(face)
+        else:
+            for i in range(1, len(face) - 1):
+                triangles.append([face[0], face[i], face[i + 1]])
+        return triangles

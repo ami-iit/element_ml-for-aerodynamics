@@ -9,16 +9,17 @@ Description: This code generates the Elastic Equilibrium Mapping (EEM) for a set
 
 import numpy as np
 from pathlib import Path
+from vtkmodules.vtkIOXML import vtkXMLUnstructuredGridReader
 
-import src.su2 as su2
 import src.mesh as ms
 import src.mapping as mp
 
-REDISTRIBUTION_STRATEGY = "mesh-based"  ## "mesh-based" or "density-based"
-DENSITY_EXP = 0
+REDISTRIBUTION_STRATEGY = "density-based"  ## "mesh-based" or "density-based"
+DENSITY_EXP = 10
+
 ITER_NUM = 100  # Number of iterations for redistribution
 BOUNDARY_SHAPE = "square"
-SHOW_PLOTS = True
+SHOW_PLOTS = False
 
 
 def main():
@@ -26,29 +27,30 @@ def main():
     # Get the path to the raw data
     mesh_dir = root / "simulations" / "new_database"
     # Get the list of files and build the data dictionary
-    files = [file for file in mesh_dir.rglob("*.su2") if file.is_file()]
-    wing_names = sorted(list(set([file.stem for file in files])))
+    files = [file for file in mesh_dir.rglob("*AoA0.vtu") if file.is_file()]
+    wing_names = sorted(list(set([file.parent.stem for file in files])))
     # Create repo to store the mappings
     map_dir = root / "maps"
     map_dir.mkdir(parents=True, exist_ok=True)
 
     # Generate mappings
-    for wing in wing_names:
-        filename = f"{wing}.su2"
-        meshfile = list(mesh_dir.rglob(filename))[0]
-        su2_mesh = su2.read(str(meshfile))
-        su2_nodes = su2_mesh.points
-        su2_faces = []
-        for idx, cells in enumerate(su2_mesh.cells_dict.values()):
-            cell_list = cells.tolist()
-            wing_indices = np.where(su2_mesh.cell_data["su2:tag"][idx] == 1)[0].tolist()
-            add_faces = [cell_list[i] for i in wing_indices]
-            su2_faces.extend(add_faces)
-        # Keep just nodes and faces of wing
-        unique_nodes = sorted(set(idx for face in su2_faces for idx in face))
-        index_map = {old_idx: new_idx for new_idx, old_idx in enumerate(unique_nodes)}
-        faces = [[index_map[idx] for idx in face] for face in su2_faces]
-        nodes = su2_nodes[unique_nodes]
+    for wing, file in zip(wing_names, files):
+        # Read the source file
+        reader = vtkXMLUnstructuredGridReader()
+        reader.SetFileName(str(file))
+        reader.Update()  # Needed because of GetScalarRange
+        output = reader.GetOutput()
+        # Get points and faces
+        num_points = output.GetPoints().GetNumberOfPoints()
+        nodes_list = [output.GetPoints().GetPoint(i) for i in range(num_points)]
+        nodes = np.array(nodes_list)
+        num_cells = output.GetNumberOfCells()
+        faces = []
+        for idx in range(num_cells):
+            num_cell_nodes = output.GetCell(idx).GetNumberOfPoints()
+            cell = [output.GetCell(idx).GetPointId(i) for i in range(num_cell_nodes)]
+            faces.append(cell)
+
         # Create and visualize open mesh
         mesh = ms.create_mesh_from_faces_split(nodes, faces)
         ms.visualize_mesh_with_edges(mesh) if SHOW_PLOTS else None
@@ -81,7 +83,7 @@ def main():
             map_edge_lengths = mp.compute_norm_edge_lengths(map2d, adj_list)
             map2dr_old = map2d.copy()
             iter, epsilon = 0, 1.0
-            while iter < ITER_NUM and epsilon > 0.01:
+            while iter < ITER_NUM and epsilon > 0.001:
                 # Compute the edge differences
                 edge_deltas = mesh_edge_lengths
                 for i in range(len(mesh_edge_lengths)):
@@ -115,6 +117,8 @@ def main():
             "map": map2dr,
             "nodes": nodes,
             "faces": faces,
+            "adjacency_list": adj_list,
+            "boundary_nodes": boundary_nodes,
         }
         np.save(map_dir / f"{wing}-map-eem-{DENSITY_EXP}.npy", wing_data)
 

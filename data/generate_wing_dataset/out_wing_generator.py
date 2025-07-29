@@ -9,11 +9,12 @@ from pathlib import Path
 
 from src.wing_flow import FlowGenerator, FlowVisualizer
 
-IM_RES = (256, 256)
-DENSITY_EXP = 1
+IM_RES = (64, 64)
+DENSITY_EXP = 3
+DEVICE = "cpu"
 
 AOA = 0.0
-SWEEP = 10.0
+SWEEP = 20.0
 
 
 def main():
@@ -21,7 +22,7 @@ def main():
     # Initialize flow object
     flow = FlowGenerator()
     # Load the dataset
-    dataset_file = root / "dataset" / f"wing-images-{IM_RES[0]}-eem-{DENSITY_EXP}.npz"
+    dataset_file = root / "dataset" / f"wing-images-{IM_RES[0]}-{DENSITY_EXP}.npz"
     dataset = np.load(dataset_file, allow_pickle=True)
     sweeps = dataset["sweep_angles"]
     aoas = dataset["angles_of_attack"]
@@ -33,10 +34,11 @@ def main():
     # Initialize interpolator
     flow.compute_interpolator(images.shape[2:])
     # Import the trained models
-    model_path = root / "training" / f"{DENSITY_EXP}"
+    model_path = root / "training" / f"{DENSITY_EXP}_v2"
     flow.load_models(
         encoder_path=str(model_path / "scripted_enc.pt"),
         decoder_path=str(model_path / "scripted_dec.pt"),
+        device=DEVICE,
     )
     # Load the RBF mapping
     rbf_file = root / "training" / "rbf" / f"rbf_data_{DENSITY_EXP}.npy"
@@ -58,7 +60,7 @@ def main():
 
     # Generate a solution from the ML models using the image generator
     if in_training:
-        in_image = torch.tensor(image[np.newaxis, ...]).to("cpu")
+        in_image = torch.tensor(image[np.newaxis, ...]).to(DEVICE)
         latent_space_val = flow.encoder(in_image)
         out_image = flow.decoder(latent_space_val).cpu().detach().numpy()
         flow.interpolate_flow_data(out_image[0])
@@ -68,12 +70,13 @@ def main():
 
     # Generate a solution from the input AoA and sweep
     latent_space_pred = flow.predict_rbf_tps(np.array([[SWEEP, AOA]]))
-    latent_space_pred = torch.tensor(latent_space_pred).to("cpu").type(torch.float32)
+    latent_space_pred = torch.tensor(latent_space_pred).to(DEVICE).type(torch.float32)
     out_image = flow.decoder(latent_space_pred).cpu().detach().numpy()
     flow.interpolate_flow_data(out_image[0])
     # Plot the solution
     viz = FlowVisualizer(flow)
     viz.plot_wing_pressure(window_name="RBF-GAE predicted image to 3D geometry")
+    viz.plot_wing_geometry(window_name="RBF-GAE predicted geometry")
 
 
 if __name__ == "__main__":

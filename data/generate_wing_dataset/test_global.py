@@ -8,11 +8,12 @@ import torch
 from pathlib import Path
 from matplotlib import pyplot as plt
 
-from src.wing_flow import FlowImporter, FlowGenerator
+from src.wing_flow import FlowImporter, FlowGenerator, FlowVisualizer
 
 MODE = "ae"  # "rbf-dec" or "ae" or "map"
 IM_RES = (64, 64)
-DENSITY_EXP = 4
+DENSITY_EXP = 0
+DEVICE = "cpu"
 WING_AREA = 1.83
 
 
@@ -40,6 +41,7 @@ def main():
     flow_out.load_models(
         encoder_path=str(model_path / "scripted_enc.pt"),
         decoder_path=str(model_path / "scripted_dec.pt"),
+        device=DEVICE,
     )
     # Load the RBF mapping
     rbf_file = root / "training" / "rbf" / f"rbf_data_{DENSITY_EXP}.npy"
@@ -55,6 +57,7 @@ def main():
     angles_of_attack = []
     in_drag_coef, in_lift_coef = [], []
     out_drag_coef, out_lift_coef = [], []
+    output_data = np.zeros(shape=(len(files), len(flow_in.map_nodes), 7))
     for idx, file in enumerate(files):
         # Set variables
         wing_name = file.parents[1].stem
@@ -69,16 +72,20 @@ def main():
         flow_in.import_mesh(mesh_data["nodes"], mesh_data["faces"])
         flow_in.compute_aerodynamic_coefficients(aoa, WING_AREA)
 
+        if sweep == 0.0 and aoa == 6.0:
+            viz = FlowVisualizer(flow_in)
+            viz.plot_wing_pressure()
+
         if MODE == "rbf-dec":
             # Generate a solution with RBF+Decoder and compute output coefficients
             ls_val = flow_out.predict_rbf_tps(np.array([[sweep, aoa]]))
-            ls_val = torch.tensor(ls_val).to("cpu").type(torch.float32)
+            ls_val = torch.tensor(ls_val).to(DEVICE).type(torch.float32)
             out_image = flow_out.decoder(ls_val).cpu().detach().numpy()[0]
         elif MODE == "ae":
             # Generate a solution from the dataset using the autoencoder
             index = np.where((aoas == aoa) & (sweeps == sweep))[0][0]
             image = images[index]
-            in_image = torch.tensor(image[np.newaxis, ...]).to("cpu")
+            in_image = torch.tensor(image[np.newaxis, ...]).to(DEVICE)
             latent_space_val = flow_out.encoder(in_image)
             out_image = flow_out.decoder(latent_space_val).cpu().detach().numpy()[0]
         elif MODE == "map":
@@ -90,6 +97,10 @@ def main():
         flow_out.import_mesh(mesh_data["nodes"], mesh_data["faces"])
         flow_out.compute_aerodynamic_coefficients(aoa, WING_AREA)
 
+        output_data[idx, :, :3] = flow_out.points
+        output_data[idx, :, 3] = flow_out.cp
+        output_data[idx, :, 4:] = flow_out.cf
+
         # Collect data
         sweep_angles.append(sweep)
         angles_of_attack.append(aoa)
@@ -99,6 +110,15 @@ def main():
         out_lift_coef.append(flow_out.lift_coefficient)
 
         print(f"{MODE} testing progress: {idx+1}/{len(files)}", end="\r", flush=True)
+
+    # Save data
+    # Save the mapping
+    data = {
+        "sweeps": np.array(sweep_angles),
+        "aoas": np.array(angles_of_attack),
+        "output_data": output_data,
+    }
+    np.save(root / "dataset" / f"output-{IM_RES[0]}-{DENSITY_EXP}.npy", data)
 
     # Plots
     plt.rcParams["text.usetex"] = True

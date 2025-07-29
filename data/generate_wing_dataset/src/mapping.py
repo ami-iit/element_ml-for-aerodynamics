@@ -156,8 +156,8 @@ def compute_global_stiffness_matrix(adj_list):
 
     for i in range(n_nodes):
         for j in adj_list[i]:
-            K_global[i, j] -= 1
-            K_global[i, i] += 1
+            K_global[i, j] += 1
+            K_global[i, i] -= 1
 
     return (
         K_global.tocsr()
