@@ -45,3 +45,6 @@
 # SU2 solution files
 *.vtu
 *.su2
+
+# Pytorch models
+*.pt
