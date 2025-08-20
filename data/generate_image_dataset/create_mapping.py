@@ -8,7 +8,7 @@ import src.sdem as sdem
 import src.mapping as mp
 
 MESH = "dual"  # "dual" or "nodal"
-SHOW_PLOTS = False
+SHOW_PLOTS = True
 
 
 def main():
@@ -95,6 +95,8 @@ def main():
             # Plot the original and final maps
             if SHOW_PLOTS:
                 mp.plot_mapping(map2d, map2dr, nodes[:, 0], config, surface)
+                # mp.plot_single_mapping(map2d, nodes[:, 0])
+                # mp.plot_single_mapping(map2dr, nodes[:, 0])
             # Save the final map
             config_data[surface] = {
                 "map": map2dr,

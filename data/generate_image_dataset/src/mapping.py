@@ -37,6 +37,18 @@ def plot_mapping(original_map, redistributed_map, values, config_name, surface_n
     plt.show()
 
 
+def plot_single_mapping(map, values):
+    plt.rcParams["text.usetex"] = True
+    plt.figure(figsize=(12, 8))
+    plt.scatter(map[:, 0], map[:, 1], c=values, cmap="jet", alpha=0.6)
+    plt.xlabel(r"$\theta$ [rad]", fontsize=28)
+    plt.ylabel(r"$\psi$ [rad]", fontsize=28)
+    plt.xticks(fontsize=24)
+    plt.yticks(fontsize=24)
+    plt.grid()
+    plt.show()
+
+
 def redistribute_points(
     points,
     bandwidth=0.1,
