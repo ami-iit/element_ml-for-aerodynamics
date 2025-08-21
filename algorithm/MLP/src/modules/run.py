@@ -24,7 +24,7 @@ class Run:
         self.config = run.config
         # Get losses history
         history = run.history()
-        self.epoch = history.iteration.values
+        self.epoch = history._step.values
         self.train_loss = history.train_loss.values
         self.val_loss = history.val_loss.values
         # Get model
