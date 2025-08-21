@@ -5,6 +5,7 @@ import wandb
 import open3d as o3d
 import matplotlib.cm as cm
 import torch_geometric.transforms as T
+import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
 import copy
 
@@ -25,6 +26,7 @@ class Run:
         self.config = run.config
         # Get losses history
         history = run.history()
+        self.epoch = history._step.values
         self.train_loss = history.train_loss.values
         self.val_loss = history.val_loss.values
         # Get model
@@ -37,7 +39,7 @@ class Run:
         scale_artifact = api.artifact(project_path + "/scaling-parameters:" + run_name)
         scaling_dict = np.load(
             scale_artifact.download() + "/scaling.npy", allow_pickle=True
-        ).all()
+        ).item()
         self.scaling = [scaling_dict[idx] for idx in scaling_dict.keys()]
 
         # Get dataset indices
@@ -58,7 +60,7 @@ class Run:
         self.model = torch.jit.load(model_path / "scripted_model.pt").to(self.device)
         self.model.eval()
         # Get scaling parameters
-        scaling_dict = np.load(model_path / "scaling.npy", allow_pickle=True).all()
+        scaling_dict = np.load(model_path / "scaling.npy", allow_pickle=True).item()
         self.scaling = [scaling_dict[idx] for idx in scaling_dict.keys()]
 
     def load_dataset(self, datafile_path: str):
@@ -102,6 +104,33 @@ class Run:
                 ) / scaling[4].astype(np.float32)
         self.scaled_dataset = scaled_dataset
         print("Dataset scaled.")
+
+    def plot_losses(self):
+        yticks = np.arange(0.1, 1.1, 0.1)
+        plt.figure(figsize=(12, 8))
+        plt.semilogy(
+            self.epoch,
+            self.train_loss,
+            linewidth=2,
+            label="Training Loss",
+            color="blue",
+        )
+        plt.semilogy(
+            self.epoch,
+            self.val_loss,
+            linewidth=2,
+            label="Validation Loss",
+            color="orange",
+        )
+        plt.xlabel("Epochs", fontsize=24)
+        plt.ylabel("Loss", fontsize=24)
+        plt.xlim([0, 5000])
+        plt.ylim([0.08, 1.0])
+        plt.xticks(fontsize=18)
+        plt.yticks(ticks=yticks, labels=np.round(yticks, 2), fontsize=18)
+        plt.legend(fontsize=24)
+        plt.grid()
+        plt.show()
 
     def visualize_pointcloud(self, points, values, window_name="Open3D"):
         # Normalize the colormap
@@ -188,9 +217,14 @@ class Run:
             self.aero_forces_in[i, :] = dataset_aero_force
             self.aero_forces_out[i, :] = pred_aero_force
             self.aero_force_errors[i, :] = np.abs(dataset_aero_force - pred_aero_force)
-        # Compute Mean Squared Error
+            self.aero_force_norm_err = np.abs(
+                np.linalg.norm(dataset_aero_force) - np.linalg.norm(pred_aero_force)
+            ) / np.linalg.norm(dataset_aero_force)
+        # Compute Root Mean Squared Error
         aero_force_rmse = np.sqrt(np.mean(self.aero_force_errors**2, axis=0))
+        aero_force_norm_rmse = np.sqrt(np.mean(self.aero_force_norm_err**2)) * 100
         # Display MSE
         print(f"RMSE Drag Force: {aero_force_rmse[2]}")
         print(f"RMSE Lift Force: {aero_force_rmse[1]}")
         print(f"RMSE Side Force: {aero_force_rmse[0]}")
+        print(f"%RMSE Norm Force: {aero_force_norm_rmse}")
