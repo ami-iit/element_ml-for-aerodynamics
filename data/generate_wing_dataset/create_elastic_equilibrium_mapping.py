@@ -15,10 +15,10 @@ import src.mesh as ms
 import src.mapping as mp
 
 REDISTRIBUTION_STRATEGY = "mesh-based"  ## "mesh-based" or "density-based"
-DENSITY_EXP = 0
+DENSITY_EXP = 4
 ITER_NUM = 100  # Number of iterations for redistribution
 BOUNDARY_SHAPE = "square"
-SHOW_PLOTS = True
+SHOW_PLOTS = False
 
 
 def main():
@@ -29,7 +29,7 @@ def main():
     files = [file for file in mesh_dir.rglob("*.su2") if file.is_file()]
     wing_names = sorted(list(set([file.stem for file in files])))
     # Create repo to store the mappings
-    map_dir = root / "maps"
+    map_dir = root / "maps" / "old"
     map_dir.mkdir(parents=True, exist_ok=True)
 
     # Generate mappings

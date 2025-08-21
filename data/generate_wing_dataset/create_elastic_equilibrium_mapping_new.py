@@ -30,7 +30,7 @@ def main():
     files = [file for file in mesh_dir.rglob("*AoA0.vtu") if file.is_file()]
     wing_names = sorted(list(set([file.parent.stem for file in files])))
     # Create repo to store the mappings
-    map_dir = root / "maps"
+    map_dir = root / "maps" / "new"
     map_dir.mkdir(parents=True, exist_ok=True)
 
     # Generate mappings
