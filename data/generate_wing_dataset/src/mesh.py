@@ -253,9 +253,23 @@ def visualize_mesh_with_edges(mesh):
     mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
         size=0.2, origin=[0, 0, 0]
     )
-    # Show everything
+    # Set visualization parameters
+    zoom = 0.5
+    points = np.array(mesh.vertices)
+    x_cen = (points[:, 0].max() + points[:, 0].min()) / 2
+    y_cen = (points[:, 1].max() + points[:, 1].min()) / 2
+    z_cen = (points[:, 2].max() + points[:, 2].min()) / 2
+    center = [x_cen, y_cen, z_cen]
+    front = [-1.0, -1.0, 1.0]
+    up = [0.0, 0.0, 1.0]
+    # Display the geometries
     o3d.visualization.draw_geometries(
-        [mesh, line_set, point_cloud, boundary_line_set, mesh_frame]
+        [mesh, line_set, point_cloud, boundary_line_set, mesh_frame],
+        zoom=zoom,
+        lookat=center,
+        front=front,
+        up=up,
+        window_name="wing mesh",
     )
 
 

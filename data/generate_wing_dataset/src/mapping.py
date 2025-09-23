@@ -148,7 +148,6 @@ def plot_planar_map(nodes, faces):
     ax.set_ylabel(r"$y$", fontsize=32)
     ax.set_aspect("equal")
     plt.grid()
-    plt.savefig("planar_map.pdf", dpi=300)
     plt.show()
 
 
