@@ -5,6 +5,9 @@ Description: This code generates the Elastic Equilibrium Mapping (EEM) for a set
              It reads the mesh data from SU2 files, and computes the planar map at elastic
              equilibrium. The mapping is then redistributed by reapplying the elastic
              equilibrium condition with a density-based non-uniform general stiffness matrix.
+Best results obtained with:
+    - GEOM = "struct", REDISTRIBUTION_STRATEGY = "mesh-based", ITER_NUM = 100
+    - GEOM = "unstruct", REDISTRIBUTION_STRATEGY = "density-based", ITER_NUM = 1
 """
 
 import numpy as np
@@ -14,41 +17,36 @@ import src.su2 as su2
 import src.mesh as ms
 import src.mapping as mp
 
-REDISTRIBUTION_STRATEGY = "mesh-based"  ## "mesh-based" or "density-based"
-DENSITY_EXP = 4
-ITER_NUM = 100  # Number of iterations for redistribution
-BOUNDARY_SHAPE = "square"
+GEOM = "unstruct"  # "struct" | "unstruct"
+REDISTRIBUTION_STRATEGY = "density-based"  ## "mesh-based" | "density-based"
+ITER_NUM = 1  # redistribution iterations
+DENSITY_EXP = 0
 SHOW_PLOTS = False
 
 
 def main():
     root = Path(__file__).parents[0]
     # Get the path to the raw data
-    mesh_dir = root / "simulations" / "new_database"
-    # Get the list of files and build the data dictionary
-    files = [file for file in mesh_dir.rglob("*.su2") if file.is_file()]
-    wing_names = sorted(list(set([file.stem for file in files])))
+    mesh_dir = root / "simulations" / GEOM
+    # Get the list of files
+    if GEOM == "struct":
+        files = [file for file in mesh_dir.rglob("*.su2") if file.is_file()]
+        wing_names = sorted(list(set([file.stem for file in files])))
+    elif GEOM == "unstruct":
+        files = [file for file in mesh_dir.rglob("*AoA0.vtu") if file.is_file()]
+        wing_names = sorted(list(set([file.parent.stem for file in files])))
     # Create repo to store the mappings
-    map_dir = root / "maps" / "old"
+    map_dir = root / "maps" / GEOM
     map_dir.mkdir(parents=True, exist_ok=True)
 
     # Generate mappings
-    for wing in wing_names:
-        filename = f"{wing}.su2"
-        meshfile = list(mesh_dir.rglob(filename))[0]
-        su2_mesh = su2.read(str(meshfile))
-        su2_nodes = su2_mesh.points
-        su2_faces = []
-        for idx, cells in enumerate(su2_mesh.cells_dict.values()):
-            cell_list = cells.tolist()
-            wing_indices = np.where(su2_mesh.cell_data["su2:tag"][idx] == 1)[0].tolist()
-            add_faces = [cell_list[i] for i in wing_indices]
-            su2_faces.extend(add_faces)
-        # Keep just nodes and faces of wing
-        unique_nodes = sorted(set(idx for face in su2_faces for idx in face))
-        index_map = {old_idx: new_idx for new_idx, old_idx in enumerate(unique_nodes)}
-        faces = [[index_map[idx] for idx in face] for face in su2_faces]
-        nodes = su2_nodes[unique_nodes]
+    for wing, file in zip(wing_names, files):
+        # filename = f"{wing}.su2"
+        # meshfile = list(mesh_dir.rglob(filename))[0]
+        if GEOM == "struct":
+            nodes, faces = su2.read_su2_surface_mesh(file)
+        elif GEOM == "unstruct":
+            nodes, faces = su2.read_vtu_surface_mesh(file)
         # Create and visualize open mesh
         mesh = ms.create_mesh_from_faces_split(nodes, faces)
         ms.visualize_mesh_with_edges(mesh) if SHOW_PLOTS else None
@@ -60,9 +58,7 @@ def main():
         start_idx = np.argmin(nodes[boundary_nodes][:, 0])
         boundary_nodes = boundary_nodes[start_idx:] + boundary_nodes[:start_idx]
         adj_list = mp.get_adjacency_list(faces)
-        map2d = mp.compute_elastic_equilibrium_planar_map(
-            boundary_nodes, adj_list, boundary_shape=BOUNDARY_SHAPE
-        )
+        map2d = mp.compute_elastic_equilibrium_planar_map(boundary_nodes, adj_list)
         mp.plot_planar_map(map2d, faces) if SHOW_PLOTS else None
 
         # Redistribution algorithm
@@ -115,6 +111,8 @@ def main():
             "map": map2dr,
             "nodes": nodes,
             "faces": faces,
+            "adjacency_list": adj_list,
+            "boundary_nodes": boundary_nodes,
         }
         np.save(map_dir / f"{wing}-map-eem-{DENSITY_EXP}.npy", wing_data)
 

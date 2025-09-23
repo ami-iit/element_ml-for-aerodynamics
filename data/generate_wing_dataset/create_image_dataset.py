@@ -10,8 +10,9 @@ from matplotlib import pyplot as plt
 
 from src.wing_flow import FlowImporter
 
-IM_RES = (64, 64)
+GEOM = "struct"  # "struct" | "unstruct"
 DENSITY_EXP = 0
+IM_RES = (64, 64)
 MIRROR_DATA = True
 
 
@@ -19,23 +20,31 @@ def main():
     root = Path(__file__).parents[0]
     # Initialize flow object
     flow = FlowImporter()
-    # Create a dataset output directory if not existing
-    dataset_dir = root / "dataset"
-    dataset_dir.mkdir(parents=True, exist_ok=True)
-    # Import and set mesh mapping
-    map_file = root / "maps" / f"S_0-map-eem-{DENSITY_EXP}.npy"
-    map_data = np.load(map_file, allow_pickle=True).item()
-    flow.import_mapping(map_data)
     # Get the path to the raw data
-    data_dir = root / "simulations"
+    data_dir = root / "simulations" / GEOM
     files = [file for file in data_dir.rglob("*.vtu") if file.is_file()]
+    # Get the pah of mesh files
+    map_dir = root / "maps" / GEOM
+    # Create a dataset output directory if not existing
+    dataset_dir = root / "dataset" / GEOM
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+
     # Initialize dataset variables
     database = np.empty(shape=(len(files), 7, IM_RES[0], IM_RES[1]), dtype=np.float32)
     sweep_angles = []
     angles_of_attack = []
     for idx, file in enumerate(files):
-        sweep = float(file.parent.parent.stem.split("_")[-1])
-        aoa = float(file.parent.stem.split("_")[-1])
+        if GEOM == "struct":
+            parent = file.parent.parent
+        elif GEOM == "unstruct":
+            parent = file.parent
+        wing_name = parent.stem
+        sweep = float(wing_name.split("_")[-1])
+        aoa = float(file.stem[16:])
+        # Import and set mesh mapping
+        map_file = map_dir / f"{wing_name}-map-eem-{DENSITY_EXP}.npy"
+        map_data = np.load(map_file, allow_pickle=True).item()
+        flow.import_mapping(map_data)
         # Data Import, Interpolation, and Image Generation
         flow.import_solution_data(file)
         flow.interp_3d_to_image(IM_RES)
@@ -76,7 +85,7 @@ def main():
         pickle.dump(dataset, f, protocol=4)
     print(f"Image dataset for wings saved.")
 
-    ## Testing
+    # Testing
     n_sim = len(database)
     rand_ids = np.random.randint(0, n_sim, 10)
     for i in rand_ids:

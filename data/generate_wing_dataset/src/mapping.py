@@ -117,8 +117,11 @@ def circular_map_to_square(map):
 
 
 def plot_planar_map(nodes, faces):
-    fig, ax = plt.subplots()
-    plt.grid(True)
+    # plt params
+    plt.rcParams["text.usetex"] = True
+    plt.rcParams["font.size"] = 28
+
+    _, ax = plt.subplots(1, 1, figsize=(9, 9))
 
     # Plot each face as connected black edges
     for face in faces:
@@ -128,10 +131,24 @@ def plot_planar_map(nodes, faces):
         face_nodes = np.vstack([face_nodes, face_nodes[0]])
         ax.plot(face_nodes[:, 0], face_nodes[:, 1], "k-")
 
-    # Plot nodes as blue dots
-    ax.scatter(nodes[:, 0], nodes[:, 1], s=20, c="blue", marker="o")
-
+    # Select boundary nodes (one coordinate = 0)
+    boundary_ids = np.where(
+        (nodes[:, 0] == 0)
+        | (nodes[:, 0] == 1)
+        | (nodes[:, 1] == 0)
+        | (nodes[:, 1] == 1)
+    )[0]
+    boundary_nodes = nodes[boundary_ids]
+    internal_ids = np.array([i for i in range(len(nodes)) if i not in boundary_ids])
+    internal_nodes = nodes[internal_ids]
+    # Plot nodes
+    ax.scatter(boundary_nodes[:, 0], boundary_nodes[:, 1], s=60, c="red", marker="o")
+    ax.scatter(internal_nodes[:, 0], internal_nodes[:, 1], s=60, c="blue", marker="o")
+    ax.set_xlabel(r"$x$", fontsize=32)
+    ax.set_ylabel(r"$y$", fontsize=32)
     ax.set_aspect("equal")
+    plt.grid()
+    plt.savefig("planar_map.pdf", dpi=300)
     plt.show()
 
 

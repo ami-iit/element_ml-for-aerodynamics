@@ -9,6 +9,7 @@ from numpy.typing import ArrayLike
 from itertools import chain, islice
 from rich.console import Console
 from contextlib import contextmanager
+from vtkmodules.vtkIOXML import vtkXMLUnstructuredGridReader
 
 
 def warn(string, highlight: bool = True) -> None:
@@ -745,3 +746,38 @@ def _translate_cells(data, has_extra_column=False):
         cells[meshio_type] = data[indices]
 
     return cells, cell_data
+
+
+def read_su2_surface_mesh(file_path):
+    su2_mesh = read(str(file_path))
+    su2_nodes = su2_mesh.points
+    su2_faces = []
+    for idx, cells in enumerate(su2_mesh.cells_dict.values()):
+        cell_list = cells.tolist()
+        wing_indices = np.where(su2_mesh.cell_data["su2:tag"][idx] == 1)[0].tolist()
+        add_faces = [cell_list[i] for i in wing_indices]
+        su2_faces.extend(add_faces)
+    # Keep just nodes and faces of wing
+    unique_nodes = sorted(set(idx for face in su2_faces for idx in face))
+    index_map = {old_idx: new_idx for new_idx, old_idx in enumerate(unique_nodes)}
+    faces = [[index_map[idx] for idx in face] for face in su2_faces]
+    nodes = su2_nodes[unique_nodes]
+    return nodes, faces
+
+
+def read_vtu_surface_mesh(file_path):
+    reader = vtkXMLUnstructuredGridReader()
+    reader.SetFileName(str(file_path))
+    reader.Update()  # Needed because of GetScalarRange
+    output = reader.GetOutput()
+    # Get points and faces
+    num_points = output.GetPoints().GetNumberOfPoints()
+    nodes_list = [output.GetPoints().GetPoint(i) for i in range(num_points)]
+    nodes = np.array(nodes_list)
+    num_cells = output.GetNumberOfCells()
+    faces = []
+    for idx in range(num_cells):
+        num_cell_nodes = output.GetCell(idx).GetNumberOfPoints()
+        cell = [output.GetCell(idx).GetPointId(i) for i in range(num_cell_nodes)]
+        faces.append(cell)
+    return nodes, faces
