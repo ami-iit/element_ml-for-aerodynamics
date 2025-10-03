@@ -85,7 +85,9 @@ def main():
         pickle.dump(dataset, f, protocol=4)
     print(f"Image dataset for wings saved.")
 
-    # Testing
+    # Testing plots
+    plt.rcParams["text.usetex"] = True
+    plt.rcParams["font.size"] = 28
     n_sim = len(database)
     rand_ids = np.random.randint(0, n_sim, 10)
     for i in rand_ids:
@@ -101,8 +103,10 @@ def main():
             image = database[i, idx, :, :]
             ax.imshow(image, origin="lower", cmap="jet")
             ax.set_title(title)
-            ax.set_xlim([-10, IM_RES[1] + 10])
-            ax.set_ylim([-10, IM_RES[0] + 10])
+            ax.set_xlim([0, IM_RES[1]])
+            ax.set_ylim([0, IM_RES[0]])
+            ax.set_xlabel(r"$x_i$", fontsize=32)
+            ax.set_ylabel(r"$y_i$", fontsize=32)
     plt.show()
 
 
