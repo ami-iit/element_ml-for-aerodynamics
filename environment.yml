@@ -2,7 +2,7 @@ name: ml-env
 channels:
   - conda-forge
 dependencies:
-  - python
+  - python==3.12
   - pathlib
   - toml
   - resolve-robotics-uri-py
@@ -15,7 +15,6 @@ dependencies:
   - rich
   - pandas
   - openpyxl
-  - open3d
   - wandb
   - huggingface_hub
   - scikit-learn
@@ -27,5 +26,14 @@ dependencies:
   - pytorch_geometric
   - onnx
   - onnxruntime
+  - plotly
+  - pytorch-msssim
+  - pip
+  - pip:
+    - open3d
+    - torchsummary
 variables:
   CUBLAS_WORKSPACE_CONFIG: :4096:8
+#
+# After installing remember to run:
+# conda install intel-openmp --force-reinstall
