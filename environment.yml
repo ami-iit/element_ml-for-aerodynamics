@@ -34,6 +34,3 @@ dependencies:
     - torchsummary
 variables:
   CUBLAS_WORKSPACE_CONFIG: :4096:8
-#
-# After installing remember to run:
-# conda install intel-openmp --force-reinstall
