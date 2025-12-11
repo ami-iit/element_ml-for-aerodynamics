@@ -10,8 +10,11 @@ import numpy as np
 import pickle
 from pathlib import Path
 from resolve_robotics_uri_py import resolve_robotics_uri
+
 from src.robot import Robot
 from src.flow_dual import FlowImporter
+
+INCLUDE_NORMALS = True
 
 
 def main():
@@ -55,10 +58,12 @@ def main():
         pitch_angles = []
         yaw_angles = []
         # Initialize database structure of dimensions (N_images, N_channels, X, Y) and store data
+        num_surfaces = len(robot.surface_list)
+        channels = 7 * num_surfaces if INCLUDE_NORMALS else 4 * num_surfaces
         database = np.empty(
             shape=(
                 len(pitch_yaw_angles),
-                4 * len(robot.surface_list),
+                channels,
                 robot.image_resolution[0],
                 robot.image_resolution[1],
             ),
@@ -70,18 +75,21 @@ def main():
             # Set robot state and get link to world transformations
             robot.set_state(pitch, yaw, joint_pos)
             link_H_world_dict = robot.compute_all_link_H_world()
+            base_H_world = robot.compute_link_H_world("root_link")
             # Import fluent data from all surfaces
             flow.import_data(data_path, config_name, pitch, yaw)
-            flow.transform_data(link_H_world_dict, airspeed=17.0, air_dens=1.225)
+            flow.transform_data(
+                link_H_world_dict, base_H_world, airspeed=17.0, air_dens=1.225
+            )
             flow.reorder_data()
             flow.assign_global_data()
             # Data Interpolation and Image Generation
-            flow.interp_3d_to_image(robot.image_resolution)
+            flow.interp_3d_to_image(robot.image_resolution, INCLUDE_NORMALS)
             database[idx, :, :, :] = flow.image
             pitch_angles.append(pitch)
             yaw_angles.append(yaw)
             print(
-                f"{config_name} configuration progress: {idx}/{pitch_yaw_angles.shape[0]}",
+                f"{config_name} configuration progress: {idx+1}/{pitch_yaw_angles.shape[0]}",
                 end="\r",
                 flush=True,
             )

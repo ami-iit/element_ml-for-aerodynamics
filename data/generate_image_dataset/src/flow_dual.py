@@ -54,11 +54,15 @@ class FlowImporter:
             s_data.w_face_areas = data.values[:, 9:12]
         return
 
-    def transform_data(self, link_H_world_dict, airspeed, air_dens):
+    def transform_data(self, link_H_world_dict, base_H_world, airspeed, air_dens):
         for s_name, s_data in self.surface.items():
-            link_H_world = link_H_world_dict[s_name]
             # transform the data from world to reference link frame
+            link_H_world = link_H_world_dict[s_name]
             s_data.l_nodes = self.transform_points(link_H_world, s_data.w_nodes)
+            # transform the data from world to base frame
+            s_data.b_face_areas = self.rotate_vectors(base_H_world, s_data.w_face_areas)
+            s_data.areas = np.linalg.norm(s_data.b_face_areas, axis=1)
+            s_data.b_face_normals = s_data.b_face_areas / s_data.areas[:, None]
             # Transform variables to coefficients
             dyn_press = 0.5 * air_dens * airspeed**2
             s_data.press_coeff = s_data.pressure / dyn_press
@@ -70,6 +74,11 @@ class FlowImporter:
         start_coord = np.hstack((points, ones))
         end_coord = np.dot(frame_1_H_frame_2, start_coord.T).T
         return end_coord[:, :3]
+
+    def rotate_vectors(self, frame_1_H_frame_2, vectors):
+        frame_1_R_frame_2 = frame_1_H_frame_2[:3, :3]
+        rotated_vectors = np.dot(frame_1_R_frame_2, vectors.T).T
+        return rotated_vectors
 
     def reorder_data(self):
         for s_data in self.surface.values():
@@ -85,21 +94,27 @@ class FlowImporter:
             s_data.friction = s_data.friction[indices]
             s_data.fric_coeff = s_data.fric_coeff[indices]
             s_data.w_face_areas = s_data.w_face_areas[indices]
+            s_data.areas = s_data.areas[indices]
+            s_data.b_face_areas = s_data.b_face_areas[indices]
+            s_data.b_face_normals = s_data.b_face_normals[indices]
         return
 
     def assign_global_data(self):
         self.w_nodes = np.empty(shape=(0, 3))
         self.cp = np.empty(shape=(0,))
         self.cf = np.empty(shape=(0, 3))
+        self.n = np.empty(shape=(0, 3))
         for s_data in self.surface.values():
             self.w_nodes = np.append(self.w_nodes, s_data.w_nodes, axis=0)
             self.cp = np.append(self.cp, s_data.press_coeff)
             self.cf = np.append(self.cf, s_data.fric_coeff, axis=0)
+            self.n = np.append(self.n, s_data.b_face_normals, axis=0)
         return
 
     def interp_3d_to_image(
         self,
         im_res,
+        include_normals=False,
     ):
         self.image = np.empty(shape=(0, im_res[0], im_res[1]))
         for s_data in self.surface.values():
@@ -124,6 +139,15 @@ class FlowImporter:
 
             interp.values = s_data.fric_coeff[:, 2].ravel().reshape(-1, 1)
             interp_z_fric_coeff = interp(query_points).reshape(X.shape)
+
+            interp.values = s_data.b_face_normals[:, 0].ravel().reshape(-1, 1)
+            interp_x_normal = interp(query_points).reshape(X.shape)
+
+            interp.values = s_data.b_face_normals[:, 1].ravel().reshape(-1, 1)
+            interp_y_normal = interp(query_points).reshape(X.shape)
+
+            interp.values = s_data.b_face_normals[:, 2].ravel().reshape(-1, 1)
+            interp_z_normal = interp(query_points).reshape(X.shape)
 
             # Extrapolate the data using nearest neighbors
             out_ids = np.isnan(interp_press_coeff)
@@ -151,15 +175,43 @@ class FlowImporter:
                     out_ids
                 ]
 
-            # Assign data
-            s_data.image = np.array(
-                [
-                    interp_press_coeff,
-                    interp_x_fric_coeff,
-                    interp_y_fric_coeff,
-                    interp_z_fric_coeff,
+                extrap.values = s_data.b_face_normals[:, 0].ravel().reshape(-1, 1)
+                interp_x_normal[out_ids] = extrap(query_points).reshape(X.shape)[
+                    out_ids
                 ]
-            )
+
+                extrap.values = s_data.b_face_normals[:, 1].ravel().reshape(-1, 1)
+                interp_y_normal[out_ids] = extrap(query_points).reshape(X.shape)[
+                    out_ids
+                ]
+
+                extrap.values = s_data.b_face_normals[:, 2].ravel().reshape(-1, 1)
+                interp_z_normal[out_ids] = extrap(query_points).reshape(X.shape)[
+                    out_ids
+                ]
+
+            # Assign data
+            if include_normals:
+                s_data.image = np.array(
+                    [
+                        interp_press_coeff,
+                        interp_x_fric_coeff,
+                        interp_y_fric_coeff,
+                        interp_z_fric_coeff,
+                        interp_x_normal,
+                        interp_y_normal,
+                        interp_z_normal,
+                    ]
+                )
+            else:
+                s_data.image = np.array(
+                    [
+                        interp_press_coeff,
+                        interp_x_fric_coeff,
+                        interp_y_fric_coeff,
+                        interp_z_fric_coeff,
+                    ]
+                )
             self.image = np.concatenate((self.image, s_data.image), axis=0)
         return
 
@@ -243,9 +295,10 @@ class FlowGenerator:
     def rotate_vectors(self, frame_1_H_frame_2, vectors):
         return np.dot(frame_1_H_frame_2[:3, :3], vectors.T).T
 
-    def separate_images(self, image):
+    def separate_images(self, image, include_normals=False):
+        ch = 7 if include_normals else 4
         for idx, s_data in enumerate(self.surface.values()):
-            s_data.image = image[4 * idx : 4 * (idx + 1), :, :]
+            s_data.image = image[ch * idx : ch * (idx + 1), :, :]
         return
 
     def compute_interpolator(self, im_res):
