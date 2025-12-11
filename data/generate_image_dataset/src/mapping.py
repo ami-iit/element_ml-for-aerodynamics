@@ -159,3 +159,299 @@ def redistribute_points(
             flush=True,
         )
     return points
+
+
+def redistribute_points_sparse(
+    points,
+    bandwidth=0.1,
+    num_iterations=50,
+    step_size=0.05,
+    alpha=1.0,
+    beta=1.0,
+    k_neighbors=5,
+    k_density=20,
+):
+    """
+    Scalable redistribution using sparse KDE gradient (O(n·k_density)) and
+    vectorized distance-preserving force (O(n·k_neighbors)).
+
+    Parameters
+    ----------
+    points : ndarray (n, 2)
+        Initial 2D coordinates.
+    bandwidth : float
+        Bandwidth for Gaussian KDE.
+    num_iterations : int
+        Number of iterations.
+    step_size : float
+        Integration step size.
+    alpha : float
+        Weight for density repulsion.
+    beta : float
+        Weight for distance preservation.
+    k_neighbors : int
+        Neighbors for distance preservation.
+    k_density : int
+        Neighbors used for KDE gradient approximation.
+    """
+    points = points.copy()
+    original_points = points.copy()
+    n, d = points.shape
+    h2 = bandwidth**2
+
+    # --- Precompute original neighbors for distance preservation ---
+    nn = NearestNeighbors(n_neighbors=k_neighbors + 1)
+    nn.fit(original_points)
+    distances, indices = nn.kneighbors(original_points)
+    neighbor_indices = indices[:, 1:]
+    neighbor_dists = distances[:, 1:]
+
+    for it in range(num_iterations):
+        # --- 1. Local neighbors for KDE (recomputed every iteration) ---
+        # using current points to follow evolving density
+        nn_dens = NearestNeighbors(n_neighbors=k_density + 1)
+        nn_dens.fit(points)
+        dists_d, idxs_d = nn_dens.kneighbors(points)
+        neighbor_idx_dens = idxs_d[:, 1:]  # exclude self
+        neighbor_dist_dens = dists_d[:, 1:]
+
+        # --- 2. Sparse KDE gradient (matrix form) ---
+        neighbors = points[neighbor_idx_dens]  # (n, k_d, 2)
+        diffs = points[:, None, :] - neighbors  # (n, k_d, 2)
+        sqdist = np.sum(diffs**2, axis=2)  # (n, k_d)
+        weights = np.exp(-sqdist / (2 * h2))  # (n, k_d)
+        grad = np.sum(weights[..., None] * diffs / h2, axis=1)  # (n, 2)
+        norms = np.linalg.norm(grad, axis=1, keepdims=True)
+        norms[norms < 1e-12] = 1.0
+        density_force = -grad / norms  # move away from high density
+
+        # --- 3. Distance-preservation force (matrix form) ---
+        neighbors = points[neighbor_indices]  # (n, k, 2)
+        diffs = points[:, None, :] - neighbors  # (n, k, 2)
+        dists = np.linalg.norm(diffs, axis=2, keepdims=True)
+        dists_safe = np.maximum(dists, 1e-8)
+        unit = diffs / dists_safe
+        distance_force = np.sum(
+            (dists[..., 0] - neighbor_dists)[..., None] * unit, axis=1
+        )
+
+        # --- 4. Update ---
+        total_force = alpha * density_force + beta * distance_force
+        points -= step_size * total_force
+
+        print(f"Iteration {it + 1}/{num_iterations}", end="\r", flush=True)
+
+    return points
+
+
+def laplace_beltrami_smoothing(
+    points,
+    faces,
+    num_iterations=10,
+    step_size=0.1,
+):
+    """
+    Smooth the 3D points on a sphere using Laplace-Beltrami smoothing.
+    Parameters
+    ----------
+    points : ndarray (n, 3)
+        Initial 3D coordinates of the mesh.
+    faces : ndarray (m, 3)
+        Triangular faces of the mesh.
+    num_iterations : int
+        Number of smoothing iterations.
+    step_size : float
+        Step size for each smoothing iteration.
+    Returns
+    Returns
+    -------
+    smoothed_points : ndarray (n, 3)
+        Smoothed 3D coordinates of the mesh.
+    """
+    smoothed_points = points.copy()
+    for _ in range(num_iterations):
+        laplacian = compute_laplacian(smoothed_points, faces)
+        smoothed_points -= step_size * laplacian
+    return smoothed_points
+
+
+from scipy.sparse import coo_matrix
+
+
+def laplacian_smoothing_with_internal_pressure(V, F, num_iters=100, step_size=0.1):
+    """
+    Laplacian-based relaxation of a mesh constrained to the unit sphere.
+
+    Parameters
+    ----------
+    V : (n, 3) ndarray
+        Vertex coordinates.
+    F : (m, 3) ndarray
+        Triangular faces (indices into V).
+    num_iters : int
+        Number of relaxation iterations.
+    step_size : float
+        Smoothing step size.
+
+    Returns
+    -------
+    V : (n, 3) ndarray
+        Relaxed vertex positions on the sphere.
+    """
+
+    # Center points to lie in [-1, 1]
+    V = V - V.mean(axis=0)
+
+    n = V.shape[0]
+
+    # --- 1. Build adjacency matrix from faces ---
+    i = np.hstack([F[:, 0], F[:, 1], F[:, 2]])
+    j = np.hstack([F[:, 1], F[:, 2], F[:, 0]])
+    data = np.ones(len(i))
+    A = coo_matrix((data, (i, j)), shape=(n, n))
+    A = A + A.T  # make symmetric (undirected edges)
+    A.setdiag(0)
+
+    # --- 2. Build Laplacian: L = D - A ---
+    D = np.array(A.sum(axis=1)).flatten()
+    L = coo_matrix(np.diag(D)) - A
+
+    # Convert to dense for clarity (could stay sparse for large meshes)
+    # L = L.toarray()
+
+    # --- 3. Iterative Laplacian smoothing + spherical projection ---
+    for i in range(num_iters):
+        V = V - step_size * (
+            (L @ V)
+            - 2.0
+            / (
+                (V - V.mean(axis=0))
+                / np.linalg.norm(V - V.mean(axis=0), axis=1, keepdims=True)
+            )
+        )  # smooth positions
+        # V /= np.linalg.norm(V, axis=1, keepdims=True)  # project to unit sphere
+        print(
+            f"Laplace-Beltrami smoothing iter: {i + 1}/{num_iters}",
+            end="\r",
+            flush=True,
+        )
+    # V /= np.linalg.norm(V, axis=1, keepdims=True)  # project to unit sphere
+
+    return V
+
+
+def laplacian_smoothing_on_sphere(V, F, num_iters=100, step_size=0.1):
+    """
+    Laplacian-based relaxation of a mesh constrained to the unit sphere.
+
+    Parameters
+    ----------
+    V : (n, 3) ndarray
+        Vertex coordinates.
+    F : (m, 3) ndarray
+        Triangular faces (indices into V).
+    num_iters : int
+        Number of relaxation iterations.
+    step_size : float
+        Smoothing step size.
+
+    Returns
+    -------
+    V : (n, 3) ndarray
+        Relaxed vertex positions on the sphere.
+    """
+
+    # Normalize points to lie on the unit sphere
+    V = V - V.mean(axis=0)
+    V /= np.linalg.norm(V, axis=1, keepdims=True)
+
+    n = V.shape[0]
+
+    # --- 1. Build adjacency matrix from faces ---
+    i = np.hstack([F[:, 0], F[:, 1], F[:, 2]])
+    j = np.hstack([F[:, 1], F[:, 2], F[:, 0]])
+    data = np.ones(len(i))
+    A = coo_matrix((data, (i, j)), shape=(n, n))
+    A = A + A.T  # make symmetric (undirected edges)
+    A.setdiag(0)
+
+    # --- 2. Build Laplacian: L = D - A ---
+    D = np.array(A.sum(axis=1)).flatten()
+    L = coo_matrix(np.diag(D)) - A
+
+    # Convert to dense for clarity (could stay sparse for large meshes)
+    # L = L.toarray()
+
+    # --- 3. Iterative Laplacian smoothing + spherical projection ---
+    for i in range(num_iters):
+        V = V - step_size * (L @ V)  # smooth positions
+        V /= np.linalg.norm(V, axis=1, keepdims=True)  # project to unit sphere
+        print(
+            f"Laplace-Beltrami smoothing iter: {i + 1}/{num_iters}",
+            end="\r",
+            flush=True,
+        )
+
+    return V
+
+
+def spherical_edge_equalization(V, F, num_iters=100, step_size=0.05):
+    """
+    Redistribute mesh vertices on a unit sphere to equalize edge lengths
+    while maintaining elastic equilibrium.
+
+    Parameters
+    ----------
+    V : (n, 3) ndarray
+        Vertex coordinates.
+    F : (m, 3) ndarray
+        Triangular faces.
+    num_iters : int
+        Number of iterations.
+    step_size : float
+        Gradient descent step size.
+
+    Returns
+    -------
+    V : (n, 3) ndarray
+        Updated vertex positions on the sphere.
+    """
+    n = V.shape[0]
+
+    # --- Build unique edge list from faces ---
+    edges = np.vstack([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]])
+    edges = np.sort(edges, axis=1)
+    edges = np.unique(edges, axis=0)
+
+    # --- Iterative relaxation ---
+    for i in range(num_iters):
+        # Compute edge vectors and lengths
+        vecs = V[edges[:, 0]] - V[edges[:, 1]]
+        lengths = np.linalg.norm(vecs, axis=1, keepdims=True)
+        mean_len = np.mean(lengths)
+
+        # Avoid zero division
+        lengths[lengths < 1e-12] = 1e-12
+
+        # Compute edge forces
+        # force = (current_length - mean_length) * direction
+        force = (lengths - mean_len) ** 2 * (vecs / lengths)
+
+        # Accumulate forces on vertices (sparse scatter)
+        Fv = np.zeros_like(V)
+        np.add.at(Fv, edges[:, 0], -force)
+        np.add.at(Fv, edges[:, 1], force)
+
+        # Update positions
+        V = V - step_size * Fv
+
+        # Reproject to unit sphere
+        V /= np.linalg.norm(V, axis=1, keepdims=True)
+
+        print(
+            f"Spherical edge equalization iter: {i + 1}/{num_iters}",
+            end="\r",
+            flush=True,
+        )
+
+    return V
