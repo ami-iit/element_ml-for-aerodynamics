@@ -14,7 +14,7 @@ from modules.constants import Const
 from modules.run import Run
 from modules.robot import Robot
 
-RUN_NAME = "trial-10"
+RUN_NAME = "trial-12"
 SCALE_MODE = "standard"  # "standard", "minmax"
 PITCH = [0.0, 40.0, 90.0]
 YAW = [0.0]
@@ -28,6 +28,10 @@ def main():
     # Set the database path
     dataset_dir = root / "test_cases" / "ironcub" / "database"
     dataset_file = dataset_dir / "ironcub-hovering-dual-graph-bodyframe.npz"
+
+    # Create output directory
+    output_dir = root / "output" / RUN_NAME
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     # Initialize robot object
     robot_name = "iRonCub-Mk3"
@@ -46,7 +50,52 @@ def main():
     Const.in_dim = 9
 
     # Compute aerodynamic forces MSE
-    run.compute_aerodynamic_forces(WIND_SPEED, SCALE_MODE)
+    run.compute_aerodynamic_forces(WIND_SPEED, SCALE_MODE, data_split="train")
+    run.compute_aerodynamic_forces(WIND_SPEED, SCALE_MODE, data_split="validation")
+    run.compute_aerodynamic_forces(WIND_SPEED, SCALE_MODE, data_split="all")
+
+    ### "polar" curves
+    # positive pitch
+    ids = np.where(run.yaw_angles == 0)[0]  # already sorted by dataset construction
+    train_ids = np.array([i for i in ids if i in run.train_ids])
+    val_ids = np.array([i for i in ids if i in run.val_ids])
+    pitches = run.pitch_angles[ids]
+    force_out = run.aero_forces_out[ids]
+    train_pitches = run.pitch_angles[train_ids]
+    train_force_in = run.aero_forces_in[train_ids]
+    val_pitches = run.pitch_angles[val_ids]
+    val_force_in = run.aero_forces_in[val_ids]
+    # negative pitch
+    ids = np.where(run.yaw_angles == 180)[0][:-1]
+    train_ids = np.array([i for i in ids if i in run.train_ids])
+    val_ids = np.array([i for i in ids if i in run.val_ids])
+    neg_pitches = run.pitch_angles[ids] - 180
+    pitches = np.concatenate((neg_pitches, pitches), axis=0)
+    neg_force_out = run.aero_forces_out[ids]
+    neg_force_out[:, [0, 1]] = -neg_force_out[:, [0, 1]]
+    force_out = np.concatenate((neg_force_out, force_out), axis=0)
+    neg_train_pitches = run.pitch_angles[train_ids] - 180
+    train_pitches = np.concatenate((neg_train_pitches, train_pitches), axis=0)
+    neg_train_force_in = run.aero_forces_in[train_ids]
+    neg_train_force_in[:, [0, 1]] = -neg_train_force_in[:, [0, 1]]
+    train_force_in = np.concatenate((neg_train_force_in, train_force_in), axis=0)
+    neg_val_pitches = run.pitch_angles[val_ids] - 180
+    val_pitches = np.concatenate((neg_val_pitches, val_pitches), axis=0)
+    neg_val_force_in = run.aero_forces_in[val_ids]
+    neg_val_force_in[:, [0, 1]] = -neg_val_force_in[:, [0, 1]]
+    val_force_in = np.concatenate((neg_val_force_in, val_force_in), axis=0)
+    force_out[:, [0, 2]] = -force_out[:, [0, 2]]
+    train_force_in[:, [0, 2]] = -train_force_in[:, [0, 2]]
+    val_force_in[:, [0, 2]] = -val_force_in[:, [0, 2]]
+    out_data = {
+        "pitch_angles": pitches,
+        "train_pitch_angles": train_pitches,
+        "val_pitch_angles": val_pitches,
+        "aero_forces_out": force_out,
+        "train_aero_forces_in": train_force_in,
+        "val_aero_forces_in": val_force_in,
+    }
+    np.savez(output_dir / "data.npz", **out_data)
 
     # 3D Visualization
     for yaw in YAW:
