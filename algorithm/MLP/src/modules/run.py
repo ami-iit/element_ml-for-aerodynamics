@@ -3,6 +3,9 @@ import pandas as pd
 import torch
 import wandb
 import open3d as o3d
+from time import time
+
+# import open3d as o3d
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
@@ -121,9 +124,22 @@ class Run:
         pcd.points = o3d.utility.Vector3dVector(points)
         pcd.colors = o3d.utility.Vector3dVector(colors)
         # Create a coordinate frame
-        frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
-            size=0.2, origin=[0, 0, 0]
+        # frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
+        #     size=0.2, origin=[0, 0, 0]
+        # )
+        wind_direction = o3d.geometry.TriangleMesh.create_arrow(
+            cylinder_height=0.2,
+            cylinder_radius=0.02,
+            cone_height=0.05,
+            cone_radius=0.04,
+            resolution=100,
         )
+        wind_direction.paint_uniform_color([0.0, 1.0, 1.0])
+        wind_direction.rotate(
+            np.array([[1, 0, 0], [0, -1, 0], [0, 0, -1]]), center=[0, 0, 0]
+        )
+        wind_direction.translate([0, 0, 1.0])
+        wind_direction.compute_vertex_normals()
         # Set visualization parameters
         zoom = 0.75
         x_cen = (points[:, 0].max() + points[:, 0].min()) / 2
@@ -132,9 +148,9 @@ class Run:
         center = [x_cen, y_cen, z_cen]
         front = [1.0, 0.0, 1.0]
         up = [0.0, 1.0, 0.0]
-        # Display the pointcloud
+        # Display the pointcloud and the arrow with shades
         o3d.visualization.draw_geometries(
-            [frame, pcd],
+            [pcd, wind_direction],
             zoom=zoom,
             lookat=center,
             front=front,
@@ -159,7 +175,11 @@ class Run:
             samples = [int(i) for i in self.val_ids if not pd.isna(i)]
         elif data_split == "all":
             samples = range(len(self.dataset))
-        for sample in samples:
+        self.model.to(self.device)
+        self.model.eval()
+        total_inference_time = 0
+        total_3d_time = 0
+        for i, sample in enumerate(samples):
             sim = self.dataset[int(sample)]
             pitch_angle = self.pitch_angles[int(sample)]
             yaw_angle = self.yaw_angles[int(sample)]
@@ -168,6 +188,7 @@ class Run:
                 input = sim[:, Const.vel_idx + Const.pos_idx]
             elif Const.in_dim == 9:  # MLPN
                 input = sim[:, Const.vel_idx + Const.pos_idx + Const.face_normal_idx]
+            # Scale input
             input[:, :3] /= self.scaling[0]
             if scale_mode == "minmax":
                 input[:, 3:6] = (input[:, 3:6] - self.scaling[1]) / (
@@ -177,13 +198,16 @@ class Run:
                 input[:, 3:6] = (input[:, 3:6] - self.scaling[1]) / self.scaling[2]
             input = torch.tensor(input, dtype=torch.float32).to(self.device)
             # Compute forward pass
-            self.model.to(self.device)
-            self.model.eval()
+            start_time = time()
             output = self.model(input).detach().cpu().numpy()
+            delta_inference_time = time() - start_time
+            total_inference_time += delta_inference_time
             if scale_mode == "minmax":
                 output = output * (self.scaling[4] - self.scaling[3]) + self.scaling[3]
             elif scale_mode == "standard":
                 output = output * self.scaling[4] + self.scaling[3]
+            delta_3d_time = time() - start_time
+            total_3d_time += delta_3d_time
             press_coeff = output[:, 0]
             fric_coeff = output[:, 1:]
             # Compute predicted centroidal aerodynamic force
@@ -203,10 +227,10 @@ class Run:
             world_H_base = self.robot.compute_world_H_link("root_link")
             pred_aero_force = np.dot(world_H_base[:3, :3], pred_body_force)
             dataset_aero_force = np.dot(world_H_base[:3, :3], dataset_body_force)
-            aero_force_error = np.abs(dataset_aero_force - pred_aero_force)
-            aero_force_norm_error = np.abs(
-                np.linalg.norm(dataset_aero_force) - np.linalg.norm(pred_aero_force)
-            ) / np.linalg.norm(dataset_aero_force)
+            aero_force_error = dataset_aero_force - pred_aero_force
+            aero_force_norm_error = np.linalg.norm(dataset_aero_force) - np.linalg.norm(
+                pred_aero_force
+            )
             # Save data
             self.aero_forces_in = np.append(
                 self.aero_forces_in, [dataset_aero_force], axis=0
@@ -220,11 +244,91 @@ class Run:
             self.aero_force_norm_errs = np.append(
                 self.aero_force_norm_errs, [aero_force_norm_error]
             )
+            ######### print progress
+            print(f"Processed sample {i + 1}/{len(samples)}", end="\r", flush=True)
+        # Compute average inference time
+        avg_inference_time = total_inference_time / len(samples)
+        avg_3d_time = total_3d_time / len(samples)
+        print(f"Average inference time per sample: {avg_inference_time:.4f} seconds")
+        print(f"Average 3D time per sample: {avg_3d_time:.4f} seconds")
         # Compute Root Mean Squared Errors
         aero_force_rmse = np.sqrt(np.mean(self.aero_force_errors**2, axis=0))
-        aero_force_norm_rmse = np.sqrt(np.mean(self.aero_force_norm_errs**2)) * 100
+        aero_force_nrmse = aero_force_rmse / (
+            np.max(self.aero_forces_in, axis=0) - np.min(self.aero_forces_in, axis=0)
+        )
+        aero_force_norm_rmse = np.sqrt(np.mean(self.aero_force_norm_errs**2))
+        aero_force_norm_nrmse = aero_force_norm_rmse / (
+            np.max(np.linalg.norm(self.aero_forces_in, axis=1))
+            - np.min(np.linalg.norm(self.aero_forces_in, axis=1))
+        )
         # Display RMSE
-        print(f"RMSE Drag Force ({data_split}): {aero_force_rmse[2]}")
-        print(f"RMSE Lift Force ({data_split}): {aero_force_rmse[1]}")
-        print(f"RMSE Side Force ({data_split}): {aero_force_rmse[0]}")
-        print(f"%RMSE Norm Force ({data_split}): {aero_force_norm_rmse}")
+        print(f"NRMSE Drag Force ({data_split}): {aero_force_nrmse[2]}")
+        print(f"NRMSE Lift Force ({data_split}): {aero_force_nrmse[1]}")
+        print(f"NRMSE Side Force ({data_split}): {aero_force_nrmse[0]}")
+        print(f"NRMSE Norm Force ({data_split}): {aero_force_norm_nrmse}")
+
+    def compute_aerodynamic_forces_custom_input(
+        self,
+        wind_speed: float,
+        scale_mode: str = "standard",
+        pitch_angles: list = [],
+        yaw_angles: list = [],
+    ):
+        dyn_press = 0.5 * 1.225 * wind_speed**2
+        self.robot.set_state(0, 0, np.zeros(self.robot.nDOF))
+        w_H_b = self.robot.compute_world_H_link("root_link")
+        sample = np.where((self.pitch_angles == 0) & (self.yaw_angles == 0))[0][0]
+        sim = self.dataset[int(sample)]
+        ref_vel = (w_H_b[:3, :3] @ sim[:, Const.vel_idx].T).T
+        ref_pos = (
+            w_H_b @ np.hstack((sim[:, Const.pos_idx], np.ones((sim.shape[0], 1)))).T
+        ).T[:, :3]
+        ref_norms = (w_H_b[:3, :3] @ sim[:, Const.face_normal_idx].T).T
+        areas = sim[:, Const.area_idx]
+        aero_forces_out = np.empty((0, 3))
+        for yaw in yaw_angles:
+            for pitch in pitch_angles:
+                # Compute robot kinematics
+                self.robot.set_state(pitch, yaw, np.zeros(self.robot.nDOF))
+                b_H_w = self.robot.compute_link_H_world("root_link")
+                w_H_b = self.robot.compute_world_H_link("root_link")
+                # Transform input
+                vel = (b_H_w[:3, :3] @ ref_vel.T).T
+                pos = (
+                    b_H_w @ np.hstack((ref_pos, np.ones((ref_pos.shape[0], 1)))).T
+                ).T[:, :3]
+                face_normals = (b_H_w[:3, :3] @ ref_norms.T).T
+                # Get input: v_x, v_y, v_z, x, y, z
+                if Const.in_dim == 6:  # MLP
+                    input = np.concatenate((vel, pos), axis=1)
+                elif Const.in_dim == 9:  # MLPN
+                    input = np.concatenate((vel, pos, face_normals), axis=1)
+                input[:, :3] /= self.scaling[0]
+                if scale_mode == "minmax":
+                    input[:, 3:6] = (input[:, 3:6] - self.scaling[1]) / (
+                        self.scaling[2] - self.scaling[1]
+                    )
+                elif scale_mode == "standard":
+                    input[:, 3:6] = (input[:, 3:6] - self.scaling[1]) / self.scaling[2]
+                input = torch.tensor(input, dtype=torch.float32).to(self.device)
+                # Compute forward pass
+                self.model.to(self.device)
+                self.model.eval()
+                output = self.model(input).detach().cpu().numpy()
+                if scale_mode == "minmax":
+                    output = (
+                        output * (self.scaling[4] - self.scaling[3]) + self.scaling[3]
+                    )
+                elif scale_mode == "standard":
+                    output = output * self.scaling[4] + self.scaling[3]
+                press_coeff = output[:, 0]
+                fric_coeff = output[:, 1:]
+                # Compute predicted centroidal aerodynamic force
+                pressure = press_coeff.reshape(-1, 1) * dyn_press
+                friction = fric_coeff * dyn_press
+                d_force = pressure * face_normals * areas + friction * areas
+                pred_body_force = np.sum(d_force, axis=0)
+                # rotate forces to aerodynamic frame
+                pred_aero_force = np.dot(w_H_b[:3, :3], pred_body_force)
+                aero_forces_out = np.append(aero_forces_out, [pred_aero_force], axis=0)
+        return aero_forces_out
