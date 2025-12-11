@@ -57,19 +57,26 @@ class HGN(nn.Module):
     def __init__(self):
         super(HGN, self).__init__()
         # Encoder layers
-        self.encoder = nn.Sequential(
-            nn.Linear(Const.in_dim, Const.enc_dim),  # Input layer
-            nn.ReLU(),
-            *[  # Hidden layers
-                nn.Sequential(
-                    nn.Linear(Const.enc_dim, Const.enc_dim),
-                    nn.ReLU(),
-                    nn.Dropout(p=Const.dropout),
-                )
-                for _ in range(Const.enc_layers)
-            ],
-            nn.Linear(Const.enc_dim, Const.latent_dim),  # Output layer
-        )
+        if Const.enc_layers >= 1:
+            self.encoder = nn.Sequential(
+                nn.Linear(Const.in_dim, Const.enc_dim),
+                nn.ReLU(),
+                *[  # Hidden layers
+                    nn.Sequential(
+                        nn.Linear(Const.enc_dim, Const.enc_dim),
+                        nn.ReLU(),
+                        nn.Dropout(p=Const.dropout),
+                    )
+                    for _ in range(Const.enc_layers)
+                ],
+                nn.Linear(Const.enc_dim, Const.latent_dim),
+            )
+        else:
+            self.encoder = nn.Sequential(
+                nn.Linear(Const.in_dim, Const.latent_dim),
+                nn.ReLU(),
+                nn.Dropout(p=Const.dropout),
+            )
         # GNN layers
         self.conv_layers = nn.ModuleList(
             [
@@ -78,19 +85,24 @@ class HGN(nn.Module):
             ]
         )
         # Decoder layers
-        self.decoder = nn.Sequential(
-            nn.Linear(Const.latent_dim, Const.dec_dim),  # Input layer
-            nn.ReLU(),
-            *[  # Hidden layers
-                nn.Sequential(
-                    nn.Linear(Const.dec_dim, Const.dec_dim),
-                    nn.ReLU(),
-                    nn.Dropout(p=Const.dropout),
-                )
-                for _ in range(Const.dec_layers)
-            ],
-            nn.Linear(Const.dec_dim, Const.out_dim),  # Output layer
-        )
+        if Const.dec_layers >= 1:
+            self.decoder = nn.Sequential(
+                nn.Linear(Const.latent_dim, Const.dec_dim),  # Input layer
+                nn.ReLU(),
+                *[  # Hidden layers
+                    nn.Sequential(
+                        nn.Linear(Const.dec_dim, Const.dec_dim),
+                        nn.ReLU(),
+                        nn.Dropout(p=Const.dropout),
+                    )
+                    for _ in range(Const.dec_layers)
+                ],
+                nn.Linear(Const.dec_dim, Const.out_dim),  # Output layer
+            )
+        else:
+            self.decoder = nn.Sequential(
+                nn.Linear(Const.latent_dim, Const.out_dim),
+            )
 
     def forward(self, x, edge_index):
         out = self.encoder(x)
