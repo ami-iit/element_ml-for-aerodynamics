@@ -1,0 +1,12 @@
+#!/bin/bash
+#PBS -N ironcub_aero_mlp
+#PBS -l select=1:ncpus=4:ngpus=1:mem=80gb
+#PBS -l walltime=23:30:00
+#PBS -q workq
+#PBS -j oe
+
+# Move to submission directory
+cd $PBS_O_WORKDIR
+
+# Run the training command
+conda run -n ml-env python /home/apaolino/element_ml-for-aerodynamics/algorithm/MLP/src/main.py /home/apaolino/element_ml-for-aerodynamics/algorithm/MLP/test_cases/ironcub/input.cfg
